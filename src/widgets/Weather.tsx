@@ -47,7 +47,7 @@ const DESCRIPTIONS: Record<number, string> = {
   95: 'Thunderstorm', 96: 'Thunder + Hail', 99: 'Severe Thunder',
 };
 
-export function Weather() {
+export function Weather({ theme = 'dark' }: { theme?: 'dark' | 'light' | 'claude' }) {
   const [data, setData] = useState<WeatherData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -76,30 +76,33 @@ export function Weather() {
       .catch((e) => setError(String(e)));
   }, []);
 
-  if (error) return <div className="text-sm opacity-50">Weather unavailable</div>;
-  if (!data) return <div className="text-sm opacity-50">Loading weather...</div>;
+  const labelClass = theme === 'dark' ? 'text-white/60' : theme === 'claude' ? 'text-[#3a2e1f]/70' : 'text-black/70';
+  const muteClass = theme === 'dark' ? 'text-white/80' : theme === 'claude' ? 'text-[#3a2e1f]/80' : 'text-black/80';
+
+  if (error) return <div className={`text-sm ${labelClass}`}>Weather unavailable</div>;
+  if (!data) return <div className={`text-sm ${labelClass}`}>Loading weather...</div>;
 
   const Icon = ICONS[data.code] || Sun;
 
   return (
     <div className="text-sm">
-      <div className="text-xs opacity-50 mb-2">{data.city}</div>
+      <div className={`text-xs mb-2 ${labelClass}`}>{data.city}</div>
       <div className="flex items-baseline gap-3 mb-3">
         <Icon className="w-8 h-8 -translate-y-1" />
         <div className="text-5xl font-thin tabular-nums">{data.temp}°</div>
       </div>
-      <div className="opacity-70 text-xs mb-3">{data.desc} · feels {data.feels}°</div>
+      <div className={`text-xs mb-3 ${muteClass}`}>{data.desc} · feels {data.feels}°</div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-        <div className="flex items-center gap-1.5 opacity-70">
+        <div className={`flex items-center gap-1.5 ${muteClass}`}>
           <Droplets className="w-3 h-3" /> {data.humidity}%
         </div>
-        <div className="flex items-center gap-1.5 opacity-70">
+        <div className={`flex items-center gap-1.5 ${muteClass}`}>
           <Wind className="w-3 h-3" /> {data.wind} km/h
         </div>
-        <div className="flex items-center gap-1.5 opacity-70">
+        <div className={`flex items-center gap-1.5 ${muteClass}`}>
           <Eye className="w-3 h-3" /> {data.visibility} km
         </div>
-        <div className="flex items-center gap-1.5 opacity-70">
+        <div className={`flex items-center gap-1.5 ${muteClass}`}>
           <Gauge className="w-3 h-3" /> {data.pressure} hPa
         </div>
       </div>

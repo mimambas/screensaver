@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Play, Pause, RotateCcw, Flag } from 'lucide-react';
 
-export function Stopwatch() {
+export function Stopwatch({ theme = 'dark' }: { theme?: 'dark' | 'light' | 'claude' }) {
   const [ms, setMs] = useState(0);
   const [running, setRunning] = useState(false);
   const [laps, setLaps] = useState<number[]>([]);
@@ -31,6 +31,9 @@ export function Stopwatch() {
     setLaps((l) => [ms, ...l]);
   };
 
+  const btnHover = theme === 'dark' ? 'hover:bg-white/15' : theme === 'claude' ? 'hover:bg-[#d4b896]/30' : 'hover:bg-black/15';
+  const lapMute = theme === 'dark' ? 'opacity-70' : theme === 'claude' ? 'text-[#3a2e1f]/70' : 'opacity-80';
+
   return (
     <div className="flex flex-col gap-3">
       <div className="text-5xl font-thin tabular-nums tracking-tighter">
@@ -39,20 +42,20 @@ export function Stopwatch() {
       <div className="flex gap-2">
         <button
           onClick={() => setRunning(!running)}
-          className="p-2 rounded-full hover:bg-white/10 transition-colors"
+          className={`p-2 rounded-full transition-colors ${btnHover}`}
         >
           {running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
         </button>
         <button
           onClick={reset}
-          className="p-2 rounded-full hover:bg-white/10 transition-colors"
+          className={`p-2 rounded-full transition-colors ${btnHover}`}
         >
           <RotateCcw className="w-4 h-4" />
         </button>
         <button
           onClick={lap}
           disabled={!running}
-          className="p-2 rounded-full hover:bg-white/10 transition-colors disabled:opacity-30"
+          className={`p-2 rounded-full transition-colors disabled:opacity-30 ${btnHover}`}
         >
           <Flag className="w-4 h-4" />
         </button>
@@ -60,7 +63,7 @@ export function Stopwatch() {
       {laps.length > 0 && (
         <div className="max-h-24 overflow-y-auto text-sm space-y-1 mt-1">
           {laps.map((l, i) => (
-            <div key={i} className="flex justify-between opacity-60 tabular-nums">
+            <div key={i} className={`flex justify-between tabular-nums ${lapMute}`}>
               <span>#{laps.length - i}</span>
               <span>{formatTime(l)}</span>
             </div>
