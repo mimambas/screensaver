@@ -25,6 +25,8 @@ import { useSleepTimer } from './widgets/use-sleep-timer';
 import { SleepTimerOverlay, SleepTimerChip } from './widgets/SleepTimer';
 import { AlarmList } from './widgets/AlarmList';
 import { Timer } from './widgets/Timer';
+import { Wallpaper } from './widgets/Wallpaper';
+import { CitiesManager, useWorldCities } from './widgets/WorldClockCities';
 
 type Layout = 'classic' | 'split' | 'minimal';
 
@@ -54,6 +56,13 @@ type PersistedSettings = {
   city: string;
   /** Auto-switch theme by local hour (6-18 = light, else dark). */
   autoTheme: boolean;
+  /** Auto-launch into fullscreen after N minutes idle. */
+  autoLaunch: boolean;
+  autoLaunchMs: number;
+  /** Animated background wallpaper style. 'none' = no wallpaper. */
+  wallpaper: 'none' | 'aurora' | 'stars' | 'rain';
+  /** Wallpaper intensity (0..1). */
+  wallpaperIntensity: number;
 };
 
 const DEFAULTS: PersistedSettings = {
@@ -76,6 +85,10 @@ const DEFAULTS: PersistedSettings = {
   autoTheme: false,
   dateLocale: 'en-US',
   dateFormat: 'long' as 'long' | 'short' | 'iso',
+  autoLaunch: false,
+  autoLaunchMs: 5 * 60_000, // 5 minutes
+  wallpaper: 'aurora' as 'none' | 'aurora' | 'stars' | 'rain',
+  wallpaperIntensity: 0.4,
 };
 
 function loadSettings(): PersistedSettings {
@@ -137,7 +150,15 @@ export default function App() {
   const [city, setCity] = useState<string>(initial.city);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [uiVisible, setUiVisible] = useState(true);
+  const [autoLaunch, setAutoLaunch] = useState<boolean>(initial.autoLaunch);
+  const [autoLaunchMs, setAutoLaunchMs] = useState<number>(initial.autoLaunchMs);
+  const [wallpaper, setWallpaper] = useState<'none' | 'aurora' | 'stars' | 'rain'>(initial.wallpaper);
+  const [wallpaperIntensity, setWallpaperIntensity] = useState<number>(initial.wallpaperIntensity);
+  // Custom user-managed city list for WorldClock. Defaults to the
+  // 5 built-in cities; user can add/remove via the CitiesManager UI.
+  const { cities: worldCities } = useWorldCities();
   const idleTimer = useRef<number | null>(null);
+  const autoLaunchTimer = useRef<number | null>(null);
   const sleep = useSleepTimer();
 
   // Persist settings to localStorage whenever they change.
@@ -148,6 +169,7 @@ export default function App() {
         showDate, showWorldClock, showQuote, showWeather,
         showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
         flipSound, city, autoTheme, dateLocale, dateFormat,
+        autoLaunch, autoLaunchMs, wallpaper, wallpaperIntensity,
       };
       window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(snap));
     } catch {
@@ -158,6 +180,7 @@ export default function App() {
     showDate, showWorldClock, showQuote, showWeather,
     showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
     flipSound, city, autoTheme, dateLocale, dateFormat,
+    autoLaunch, autoLaunchMs, wallpaper, wallpaperIntensity,
   ]);
 
   const toggleFullscreen = useCallback(async () => {
@@ -185,6 +208,17 @@ export default function App() {
         document.body.style.cursor = 'none';
         setUiVisible(false);
         setShowSettings(false);
+        // Auto-launch into fullscreen after a longer idle if the user
+        // opted in. This is the actual screensaver behavior: the screen
+        // goes fullscreen on its own, wakes on any input.
+        if (autoLaunch && !document.fullscreenElement) {
+          autoLaunchTimer.current = window.setTimeout(() => {
+            // Re-check inside the timer in case state changed.
+            if (autoLaunch && !document.fullscreenElement) {
+              void toggleFullscreen();
+            }
+          }, autoLaunchMs);
+        }
       }, 3000);
     };
     window.addEventListener('mousemove', reset);
@@ -196,8 +230,9 @@ export default function App() {
       window.removeEventListener('keydown', reset);
       window.removeEventListener('touchstart', reset);
       if (idleTimer.current !== null) window.clearTimeout(idleTimer.current);
+      if (autoLaunchTimer.current !== null) window.clearTimeout(autoLaunchTimer.current);
     };
-  }, [sleep.isAsleep]);
+  }, [sleep.isAsleep, autoLaunch, autoLaunchMs, toggleFullscreen]);
 
   // Sync fullscreen state when user exits via Esc / browser chrome
   useEffect(() => {
@@ -283,6 +318,10 @@ export default function App() {
     setFlipSound(DEFAULTS.flipSound);
     setCity(DEFAULTS.city);
     setAutoTheme(DEFAULTS.autoTheme);
+    setAutoLaunch(DEFAULTS.autoLaunch);
+    setAutoLaunchMs(DEFAULTS.autoLaunchMs);
+    setWallpaper(DEFAULTS.wallpaper);
+    setWallpaperIntensity(DEFAULTS.wallpaperIntensity);
   };
 
   // While asleep, render nothing — black overlay handles the rest.
@@ -321,6 +360,18 @@ export default function App() {
               : 'radial-gradient(ellipse at center, rgba(0,0,0,0.03) 0%, transparent 60%)',
         }}
       />
+
+      {/* Animated wallpaper layer — sits behind everything, fixed full-viewport.
+          Three styles: aurora (drifting color blobs), stars (twinkling field),
+          rain (falling streaks). Intensity scales the alpha; opacity
+          transition avoids jarring toggles. */}
+      {wallpaper !== 'none' && (
+        <Wallpaper
+          style={wallpaper}
+          intensity={wallpaperIntensity}
+          isDark={isDark(theme)}
+        />
+      )}
 
       {/* Sleep timer chip — top left */}
       <div
@@ -485,6 +536,77 @@ export default function App() {
               className="accent-current"
             />
           </label>
+
+          {autoLaunch && (
+            <div
+              className={`flex items-center gap-2 mb-4 px-2 py-1.5 rounded-lg text-[10px] ${
+                isDark(theme) ? 'text-white/60' : isClaude(theme) ? 'text-[#3a2e1f]/60' : 'text-black/60'
+              }`}
+            >
+              <span>Fullscreen after</span>
+              <input
+                type="number"
+                min={1}
+                max={120}
+                value={Math.round(autoLaunchMs / 60_000)}
+                onChange={(e) => {
+                  const m = Math.max(1, Math.min(120, Number(e.target.value) || 5));
+                  setAutoLaunchMs(m * 60_000);
+                }}
+                className={`w-12 bg-transparent text-center tabular-nums outline-none ${
+                  isDark(theme) ? 'text-white' : isClaude(theme) ? 'text-[#3a2e1f]' : 'text-black'
+                }`}
+              />
+              <span>min idle</span>
+            </div>
+          )}
+
+          <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
+            Wallpaper
+          </div>
+          <div className="grid grid-cols-4 gap-1 mb-2">
+            {(['none', 'aurora', 'stars', 'rain'] as const).map((w) => (
+              <button
+                key={w}
+                type="button"
+                onClick={() => setWallpaper(w)}
+                aria-pressed={wallpaper === w}
+                className={`px-1 py-2 rounded-lg text-[10px] capitalize transition-colors ${
+                  wallpaper === w
+                    ? isDark(theme)
+                      ? 'bg-white/15 text-white'
+                      : isClaude(theme)
+                      ? 'bg-[#d4b896] text-[#3a2e1f]'
+                      : 'bg-black/15 text-black'
+                    : isDark(theme)
+                    ? 'hover:bg-white/10 text-white/80'
+                    : isClaude(theme)
+                    ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/80'
+                    : 'hover:bg-black/10 text-black/80'
+                }`}
+              >
+                {w === 'none' ? '∅' : w === 'aurora' ? '🌌' : w === 'stars' ? '✨' : '🌧'} {w}
+              </button>
+            ))}
+          </div>
+          {wallpaper !== 'none' && (
+            <label
+              className={`flex items-center gap-2 mb-4 px-2 py-1.5 rounded-lg text-[10px] ${
+                isDark(theme) ? 'text-white/60' : isClaude(theme) ? 'text-[#3a2e1f]/60' : 'text-black/60'
+              }`}
+            >
+              <span>Intensity</span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={wallpaperIntensity}
+                onChange={(e) => setWallpaperIntensity(Number(e.target.value))}
+                className="flex-1 accent-current"
+              />
+            </label>
+          )}
 
           <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
             Clock Style
@@ -707,6 +829,7 @@ export default function App() {
               { label: 'Day Progress', val: showDayProgress, set: () => setShowDayProgress((v) => !v) },
               { label: 'Alarms', val: showAlarms, set: () => setShowAlarms((v) => !v) },
               { label: 'Flip Sound', val: flipSound, set: () => setFlipSound((v) => !v) },
+              { label: 'Auto-launch', val: autoLaunch, set: () => setAutoLaunch((v) => !v) },
             ].map((opt) => (
               <label
                 key={opt.label}
@@ -747,6 +870,17 @@ export default function App() {
               </label>
             ))}
           </div>
+
+          {showWorldClock && (
+            <div className="mt-3">
+              <div className={`text-[10px] uppercase tracking-widest opacity-70 mb-2 ${
+                isDark(theme) ? 'text-white/60' : isClaude(theme) ? 'text-[#3a2e1f]/60' : 'text-black/60'
+              }`}>
+                Cities ({worldCities.length})
+              </div>
+              <CitiesManager theme={theme} />
+            </div>
+          )}
 
           {showDate && (
             <div
@@ -895,7 +1029,7 @@ export default function App() {
         <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-8 gap-8">
           <DigitalClock style={clockStyle} color={clockColor} size={clockSize} soundEnabled={flipSound} theme={theme} />
           {showDate && <DateDisplay theme={theme} locale={dateLocale} format={dateFormat} />}
-          {showWorldClock && <WorldClock color={clockColor} theme={theme} />}
+          {showWorldClock && <WorldClock color={clockColor} theme={theme} cities={worldCities} />}
 
           {(showPomodoro || showStopwatch || showDayProgress || showTimer) && (
             <div className="flex flex-wrap items-start justify-center gap-12 mt-2">
@@ -922,7 +1056,7 @@ export default function App() {
           <div className="flex flex-col items-center justify-center gap-6 border-r border-white/10 pr-6">
             <DigitalClock style={clockStyle} color={clockColor} size={clockSize} soundEnabled={flipSound} theme={theme} />
             {showDate && <DateDisplay theme={theme} locale={dateLocale} format={dateFormat} />}
-            {showWorldClock && <WorldClock color={clockColor} theme={theme} />}
+            {showWorldClock && <WorldClock color={clockColor} theme={theme} cities={worldCities} />}
             {showDayProgress && <DayProgress theme={theme} city={city} />}
           </div>
 
