@@ -275,11 +275,12 @@ function CasioClock({
   const dateNum = String(now.getDate()).padStart(2, '0');
 
   // LCD colors: faint green-cyan positive display on dark background.
-  // We use a teal-grey digit color on a tinted black LCD panel.
-  // The actual digit/label colors come from `tint` below, which is
-  // driven by the user's chosen clock color.
+  // The case is a subtle vertical gradient; the LCD itself is a
+  // tinted dark green-black. The actual digit/label colors come from
+  // `tint` below, which is driven by the user's chosen clock color.
   // Allow the user to tint the LCD color (via the clockColor picker).
   // 'ink' / 'white' / 'cyan' / etc. map to a green-tinted analog.
+  const caseBg = '#0a0a0a';
   const tint = useCasioTint(color);
 
   return (
@@ -330,9 +331,9 @@ function CasioClock({
           width: lcdW,
           height: lcdH,
           margin: `${10 * scale}px 0 0 0`,
-          background: lcdBg,
+          background: '#0d1612',
           borderRadius: 2 * scale,
-          boxShadow: `inset 0 0 ${4 * scale}px rgba(0,0,0,0.8), inset 0 0 ${10 * scale}px ${lcdGlow}`,
+          boxShadow: `inset 0 0 ${4 * scale}px rgba(0,0,0,0.8), inset 0 0 ${10 * scale}px rgba(120, 200, 130, 0.04)`,
           overflow: 'hidden',
           // Faint pixel grid texture to evoke the LCD dot matrix
           backgroundImage: `repeating-linear-gradient(0deg, transparent 0, transparent ${2 * scale}px, rgba(120, 200, 130, 0.02) ${2 * scale}px, rgba(120, 200, 130, 0.02) ${3 * scale}px)`,
