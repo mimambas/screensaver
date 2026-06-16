@@ -328,10 +328,27 @@ export default function App() {
 
       {/* Keyboard shortcut hint — bottom center, fades with the rest of the UI. */}
       <div
-        className={`absolute bottom-4 left-0 right-0 z-20 flex justify-center transition-opacity duration-500 ${
+        className={`absolute bottom-4 left-0 right-0 z-20 flex flex-col items-center gap-2 transition-opacity duration-500 ${
           uiVisible ? 'opacity-50 hover:opacity-80' : 'opacity-0 pointer-events-none'
         }`}
       >
+        {clockStyle === 'casio' && (
+          <div
+            className={`text-[11px] tracking-wider tabular-nums flex items-center gap-3 px-3 py-1 rounded-full backdrop-blur-sm ${
+              isDark(theme)
+                ? 'bg-white/5 text-white/70'
+                : isClaude(theme)
+                ? 'bg-[#3a2e1f]/10 text-[#3a2e1f]/70'
+                : 'bg-black/5 text-black/70'
+            }`}
+          >
+            <span><kbd className="font-semibold">F</kbd> cycle menu</span>
+            <span className="opacity-40">·</span>
+            <span><kbd className="font-semibold">Q</kbd> edit / split</span>
+            <span className="opacity-40">·</span>
+            <span><kbd className="font-semibold">W</kbd>/<kbd className="font-semibold">E</kbd> start · hold 3s for CA510</span>
+          </div>
+        )}
         <div
           className={`text-[11px] tracking-wider tabular-nums flex items-center gap-3 px-3 py-1.5 rounded-full backdrop-blur-sm ${
             isDark(theme)
