@@ -27,6 +27,7 @@ import { AlarmList } from './widgets/AlarmList';
 import { Timer } from './widgets/Timer';
 import { Wallpaper } from './widgets/Wallpaper';
 import { CitiesManager, useWorldCities } from './widgets/WorldClockCities';
+import { Calendar } from './widgets/Calendar';
 
 type Layout = 'classic' | 'split' | 'minimal';
 
@@ -42,6 +43,7 @@ type PersistedSettings = {
   clockColor: ClockColor;
   clockSize: ClockSize;
   showDate: boolean;
+  showCalendar: boolean;
   dateLocale: string;
   dateFormat: 'long' | 'short' | 'iso';
   showWorldClock: boolean;
@@ -72,6 +74,7 @@ const DEFAULTS: PersistedSettings = {
   clockColor: 'white',
   clockSize: CLOCK_SIZE_PRESETS.default,
   showDate: true,
+  showCalendar: false,
   showWorldClock: true,
   showQuote: true,
   showWeather: true,
@@ -111,6 +114,7 @@ export default function App() {
   const [showQuote, setShowQuote] = useState(initial.showQuote);
   const [showWorldClock, setShowWorldClock] = useState(initial.showWorldClock);
   const [showDate, setShowDate] = useState(initial.showDate);
+  const [showCalendar, setShowCalendar] = useState(initial.showCalendar);
   const [dateLocale, setDateLocale] = useState<string>(initial.dateLocale);
   const [dateFormat, setDateFormat] = useState<'long' | 'short' | 'iso'>(initial.dateFormat);
   const [showWeather, setShowWeather] = useState(initial.showWeather);
@@ -166,7 +170,7 @@ export default function App() {
     try {
       const snap: PersistedSettings = {
         layout, theme, clockStyle, clockColor, clockSize,
-        showDate, showWorldClock, showQuote, showWeather,
+        showDate, showCalendar, showWorldClock, showQuote, showWeather,
         showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
         flipSound, city, autoTheme, dateLocale, dateFormat,
         autoLaunch, autoLaunchMs, wallpaper, wallpaperIntensity,
@@ -177,7 +181,7 @@ export default function App() {
     }
   }, [
     layout, theme, clockStyle, clockColor, clockSize,
-    showDate, showWorldClock, showQuote, showWeather,
+    showDate, showCalendar, showWorldClock, showQuote, showWeather,
     showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
     flipSound, city, autoTheme, dateLocale, dateFormat,
     autoLaunch, autoLaunchMs, wallpaper, wallpaperIntensity,
@@ -305,6 +309,7 @@ export default function App() {
     setClockColor(DEFAULTS.clockColor);
     setClockSize(DEFAULTS.clockSize);
     setShowDate(DEFAULTS.showDate);
+    setShowCalendar(DEFAULTS.showCalendar);
     setDateLocale(DEFAULTS.dateLocale);
     setDateFormat(DEFAULTS.dateFormat);
     setShowWorldClock(DEFAULTS.showWorldClock);
@@ -331,7 +336,7 @@ export default function App() {
 
   return (
     <div
-      className={`min-h-screen w-screen relative overflow-hidden transition-colors duration-500 ${
+      className={`min-h-screen w-screen relative overflow-hidden transition-[background-color,color] duration-700 ${
         isDark(theme)
           ? 'bg-black text-white'
           : isClaude(theme)
@@ -344,8 +349,9 @@ export default function App() {
               backgroundColor: '#faf6ef',
               backgroundImage:
                 'radial-gradient(at 20% 0%, rgba(217, 119, 87, 0.08) 0px, transparent 50%), radial-gradient(at 80% 100%, rgba(255, 184, 140, 0.10) 0px, transparent 50%)',
+              transition: 'background-color 700ms ease, background-image 700ms ease',
             }
-          : undefined
+          : { transition: 'background-color 700ms ease' }
       }
     >
       {/* Subtle radial vignette */}
@@ -820,6 +826,7 @@ export default function App() {
           <div className="space-y-1">
             {[
               { label: 'Date', val: showDate, set: () => setShowDate((v) => !v) },
+              { label: 'Calendar', val: showCalendar, set: () => setShowCalendar((v) => !v) },
               { label: 'World Clock', val: showWorldClock, set: () => setShowWorldClock((v) => !v) },
               { label: 'Quotes', val: showQuote, set: () => setShowQuote((v) => !v) },
               { label: 'Pomodoro', val: showPomodoro, set: () => setShowPomodoro((v) => !v) },
@@ -1029,6 +1036,7 @@ export default function App() {
         <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-8 gap-8">
           <DigitalClock style={clockStyle} color={clockColor} size={clockSize} soundEnabled={flipSound} theme={theme} />
           {showDate && <DateDisplay theme={theme} locale={dateLocale} format={dateFormat} />}
+          {showCalendar && <div className="mt-2"><Calendar theme={theme} locale={dateLocale} /></div>}
           {showWorldClock && <WorldClock color={clockColor} theme={theme} cities={worldCities} />}
 
           {(showPomodoro || showStopwatch || showDayProgress || showTimer) && (
@@ -1056,6 +1064,7 @@ export default function App() {
           <div className="flex flex-col items-center justify-center gap-6 border-r border-white/10 pr-6">
             <DigitalClock style={clockStyle} color={clockColor} size={clockSize} soundEnabled={flipSound} theme={theme} />
             {showDate && <DateDisplay theme={theme} locale={dateLocale} format={dateFormat} />}
+          {showCalendar && <div className="mt-2"><Calendar theme={theme} locale={dateLocale} /></div>}
             {showWorldClock && <WorldClock color={clockColor} theme={theme} cities={worldCities} />}
             {showDayProgress && <DayProgress theme={theme} city={city} />}
           </div>
