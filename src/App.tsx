@@ -740,15 +740,8 @@ export default function App() {
       )}
 
       {layout === 'minimal' && (
-        <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-8 gap-8">
+        <div className="relative z-10 min-h-screen flex items-center justify-center p-8">
           <DigitalClock style={clockStyle} color={clockColor} size={clockSize} soundEnabled={flipSound} theme={theme} />
-          {showDate && <DateDisplay theme={theme} />}
-          {showDayProgress && <DayProgress theme={theme} city={city} />}
-          {showQuote && (
-            <div className="absolute bottom-8">
-              <Quotes theme={theme} />
-            </div>
-          )}
         </div>
       )}
     </div>
