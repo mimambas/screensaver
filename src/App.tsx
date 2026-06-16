@@ -326,6 +326,31 @@ export default function App() {
         </button>
       </div>
 
+      {/* Keyboard shortcut hint — bottom center, fades with the rest of the UI. */}
+      <div
+        className={`absolute bottom-4 left-0 right-0 z-20 flex justify-center transition-opacity duration-500 ${
+          uiVisible ? 'opacity-50 hover:opacity-80' : 'opacity-0 pointer-events-none'
+        }`}
+      >
+        <div
+          className={`text-[11px] tracking-wider tabular-nums flex items-center gap-3 px-3 py-1.5 rounded-full backdrop-blur-sm ${
+            isDark(theme)
+              ? 'bg-white/5 text-white/70'
+              : isClaude(theme)
+              ? 'bg-[#3a2e1f]/10 text-[#3a2e1f]/70'
+              : 'bg-black/5 text-black/70'
+          }`}
+        >
+          <span><kbd className="font-semibold">F</kbd> fullscreen</span>
+          <span className="opacity-40">·</span>
+          <span><kbd className="font-semibold">S</kbd> settings</span>
+          <span className="opacity-40">·</span>
+          <span><kbd className="font-semibold">H</kbd> hide UI</span>
+          <span className="opacity-40">·</span>
+          <span><kbd className="font-semibold">Esc</kbd> close / wake</span>
+        </div>
+      </div>
+
       {/* Settings panel */}
       {showSettings && (
         <div
