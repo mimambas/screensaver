@@ -1187,7 +1187,17 @@ export function WorldClock({
 // Date display
 // --------------------------------------------------------------------------
 
-export function DateDisplay({ theme = 'dark' }: { theme?: ThemeName }) {
+export function DateDisplay({
+  theme = 'dark',
+  locale = 'en-US',
+  format = 'long',
+}: {
+  theme?: ThemeName;
+  /** BCP-47 locale tag, e.g. 'en-US' or 'id-ID'. */
+  locale?: string;
+  /** 'long' = "Senin, 16 Juni 2026"; 'iso' = "2026-06-16"; 'short' = "Mon, Jun 16". */
+  format?: 'long' | 'short' | 'iso';
+}) {
   const [now, setNow] = useState(new Date());
 
   // Align next refresh to the start of the next minute so the display
@@ -1209,12 +1219,15 @@ export function DateDisplay({ theme = 'dark' }: { theme?: ThemeName }) {
     };
   }, []);
 
-  const dayName = now.toLocaleDateString(undefined, { weekday: 'long' });
-  const dateStr = now.toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  const dayName = now.toLocaleDateString(locale, { weekday: format === 'short' ? 'short' : 'long' });
+  const dateStr =
+    format === 'iso'
+      ? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      : now.toLocaleDateString(locale, {
+          day: 'numeric',
+          month: format === 'short' ? 'short' : 'long',
+          year: 'numeric',
+        });
 
   const label =
     theme === 'dark' ? 'text-white/60' : theme === 'claude' ? 'text-[#3a2e1f]/70' : 'text-black/70';

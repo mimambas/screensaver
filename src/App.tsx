@@ -40,6 +40,8 @@ type PersistedSettings = {
   clockColor: ClockColor;
   clockSize: ClockSize;
   showDate: boolean;
+  dateLocale: string;
+  dateFormat: 'long' | 'short' | 'iso';
   showWorldClock: boolean;
   showQuote: boolean;
   showWeather: boolean;
@@ -72,6 +74,8 @@ const DEFAULTS: PersistedSettings = {
   flipSound: true,
   city: 'Jakarta',
   autoTheme: false,
+  dateLocale: 'en-US',
+  dateFormat: 'long' as 'long' | 'short' | 'iso',
 };
 
 function loadSettings(): PersistedSettings {
@@ -94,6 +98,8 @@ export default function App() {
   const [showQuote, setShowQuote] = useState(initial.showQuote);
   const [showWorldClock, setShowWorldClock] = useState(initial.showWorldClock);
   const [showDate, setShowDate] = useState(initial.showDate);
+  const [dateLocale, setDateLocale] = useState<string>(initial.dateLocale);
+  const [dateFormat, setDateFormat] = useState<'long' | 'short' | 'iso'>(initial.dateFormat);
   const [showWeather, setShowWeather] = useState(initial.showWeather);
   const [showStopwatch, setShowStopwatch] = useState(initial.showStopwatch);
   const [showPomodoro, setShowPomodoro] = useState(initial.showPomodoro);
@@ -141,7 +147,7 @@ export default function App() {
         layout, theme, clockStyle, clockColor, clockSize,
         showDate, showWorldClock, showQuote, showWeather,
         showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
-        flipSound, city, autoTheme,
+        flipSound, city, autoTheme, dateLocale, dateFormat,
       };
       window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(snap));
     } catch {
@@ -151,7 +157,7 @@ export default function App() {
     layout, theme, clockStyle, clockColor, clockSize,
     showDate, showWorldClock, showQuote, showWeather,
     showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
-    flipSound, city, autoTheme,
+    flipSound, city, autoTheme, dateLocale, dateFormat,
   ]);
 
   const toggleFullscreen = useCallback(async () => {
@@ -264,6 +270,8 @@ export default function App() {
     setClockColor(DEFAULTS.clockColor);
     setClockSize(DEFAULTS.clockSize);
     setShowDate(DEFAULTS.showDate);
+    setDateLocale(DEFAULTS.dateLocale);
+    setDateFormat(DEFAULTS.dateFormat);
     setShowWorldClock(DEFAULTS.showWorldClock);
     setShowQuote(DEFAULTS.showQuote);
     setShowWeather(DEFAULTS.showWeather);
@@ -715,7 +723,6 @@ export default function App() {
                   type="button"
                   role="switch"
                   aria-checked={opt.val}
-                  aria-label={`Toggle ${opt.label}`}
                   onClick={opt.set}
                   className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
                     opt.val
@@ -740,6 +747,65 @@ export default function App() {
               </label>
             ))}
           </div>
+
+          {showDate && (
+            <div
+              className={`mt-3 space-y-2 text-[10px] ${
+                isDark(theme) ? 'text-white/60' : isClaude(theme) ? 'text-[#3a2e1f]/60' : 'text-black/60'
+              }`}
+            >
+              <div className="flex gap-1">
+                {(['en-US', 'id-ID'] as const).map((loc) => (
+                  <button
+                    key={loc}
+                    type="button"
+                    onClick={() => setDateLocale(loc)}
+                    aria-pressed={dateLocale === loc}
+                    className={`flex-1 px-2 py-1 rounded text-[10px] transition-colors ${
+                      dateLocale === loc
+                        ? isDark(theme)
+                          ? 'bg-white/15 text-white'
+                          : isClaude(theme)
+                          ? 'bg-[#d4b896] text-[#3a2e1f]'
+                          : 'bg-black/15 text-black'
+                        : isDark(theme)
+                        ? 'hover:bg-white/10 text-white/70'
+                        : isClaude(theme)
+                        ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/70'
+                        : 'hover:bg-black/10 text-black/70'
+                    }`}
+                  >
+                    {loc === 'en-US' ? 'EN' : 'ID'}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-1">
+                {(['long', 'short', 'iso'] as const).map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setDateFormat(f)}
+                    aria-pressed={dateFormat === f}
+                    className={`flex-1 px-2 py-1 rounded text-[10px] transition-colors ${
+                      dateFormat === f
+                        ? isDark(theme)
+                          ? 'bg-white/15 text-white'
+                          : isClaude(theme)
+                          ? 'bg-[#d4b896] text-[#3a2e1f]'
+                          : 'bg-black/15 text-black'
+                        : isDark(theme)
+                        ? 'hover:bg-white/10 text-white/70'
+                        : isClaude(theme)
+                        ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/70'
+                        : 'hover:bg-black/10 text-black/70'
+                    }`}
+                  >
+                    {f === 'long' ? 'Long' : f === 'short' ? 'Short' : 'ISO'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className={`text-[10px] mt-4 opacity-40 leading-relaxed ${isDark(theme) ? 'text-white' : 'text-black'}`}>
             Shortcuts: <kbd className="px-1 border border-current/30 rounded">F</kbd> fullscreen ·{' '}
@@ -828,7 +894,7 @@ export default function App() {
       {layout === 'classic' && (
         <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-8 gap-8">
           <DigitalClock style={clockStyle} color={clockColor} size={clockSize} soundEnabled={flipSound} theme={theme} />
-          {showDate && <DateDisplay theme={theme} />}
+          {showDate && <DateDisplay theme={theme} locale={dateLocale} format={dateFormat} />}
           {showWorldClock && <WorldClock color={clockColor} theme={theme} />}
 
           {(showPomodoro || showStopwatch || showDayProgress || showTimer) && (
@@ -855,7 +921,7 @@ export default function App() {
           {/* Left: time */}
           <div className="flex flex-col items-center justify-center gap-6 border-r border-white/10 pr-6">
             <DigitalClock style={clockStyle} color={clockColor} size={clockSize} soundEnabled={flipSound} theme={theme} />
-            {showDate && <DateDisplay theme={theme} />}
+            {showDate && <DateDisplay theme={theme} locale={dateLocale} format={dateFormat} />}
             {showWorldClock && <WorldClock color={clockColor} theme={theme} />}
             {showDayProgress && <DayProgress theme={theme} city={city} />}
           </div>
