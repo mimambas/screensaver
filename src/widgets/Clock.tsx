@@ -8,6 +8,7 @@ import {
 } from './clock-constants';
 import { playClack, unlockAudio } from './audio';
 import type { ClockColor, ClockSize, ClockStyle, ThemeName } from './clock-constants';
+import { useCasioState, type CasioHandle } from './use-casio-state';
 
 // --------------------------------------------------------------------------
 // Top-level DigitalClock
@@ -279,6 +280,7 @@ const SEG9: Record<string, string[]> = {
 };
 
 function CasioClock({
+  color,
   now,
   size: sizeProp = 'md',
 }: {
@@ -293,55 +295,294 @@ function CasioClock({
   const W = 1480 * scale * 0.27; // ≈400 at scale=1
   const H = 1311 * scale * 0.27; // ≈354 at scale=1
 
+  // Live state machine + flags. Press L/C/A to navigate.
+  const casio = useCasioState();
+
   // Compute the per-display characters, exactly like the reference's
-  // OS does for the default dateTime menu.
+  // OS does. Different menus use different digit fields.
+  const visibility = useMemo(() => {
+    return computeCasioVisibility(casio, now);
+  }, [casio, now]);
+
+  // Keyboard bindings: Q/E/F → L/A/C (top-row QWE mirrors the
+  // physical watch's button positions reasonably).
+  useEffect(() => {
+    const onDown = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      const k = e.key.toLowerCase();
+      if (k === 'q') casio.pressL();
+      else if (k === 'w' || k === 'e') casio.pressA();
+      else if (k === 'f') casio.pressC();
+    };
+    const onUp = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      if (k === 'q') casio.releaseL();
+      else if (k === 'w' || k === 'e') casio.releaseA();
+      else if (k === 'f') casio.releaseC();
+    };
+    window.addEventListener('keydown', onDown);
+    window.addEventListener('keyup', onUp);
+    return () => {
+      window.removeEventListener('keydown', onDown);
+      window.removeEventListener('keyup', onUp);
+    };
+  }, [casio]);
+
+  // Tint the LCD via CSS hue-rotate. The reference SVG has fixed
+  // green LCD segments; hue-rotate lets us shift the hue to match
+  // the user's chosen clockColor while keeping the case/buttons grey.
+  const tint = getCasioTintFilter(color);
+
+  return (
+    <div
+      style={{
+        width: W,
+        height: H,
+        position: 'relative',
+        filter: tint ? `hue-rotate(${tint}deg)` : undefined,
+      }}
+    >
+      <CasioSvgEmbed visibility={visibility} />
+      <CasioButtonOverlay
+        handle={casio}
+        W={W}
+        H={H}
+        scale={scale}
+      />
+    </div>
+  );
+}
+
+// Map clockColor → CSS hue-rotate degrees. The reference SVG has its
+// LCD filled with a green gradient; we shift the hue so the chosen
+// clockColor tints the entire LCD panel. The case/buttons are mostly
+// greys so they shift less noticeably.
+function getCasioTintFilter(color: ClockColor): number | null {
+  switch (color) {
+    case 'white':
+    case 'ink':
+      return null; // default green stays as-is
+    case 'amber':
+      return -55; // green → amber
+    case 'green':
+      return 0; // already green
+    case 'cyan':
+      return -120; // green → cyan
+    case 'red':
+      return 120; // green → red (complementary)
+    case 'pink':
+      return -160; // green → magenta/pink
+    default:
+      return null;
+  }
+}
+
+// --------------------------------------------------------------------------
+// CasioButtonOverlay — transparent clickable areas over the SVG so the
+// user can press L / C / A with the mouse. Matches the button positions
+// in the reference (L = top-left, C = bottom-left, A = right).
+// --------------------------------------------------------------------------
+
+function CasioButtonOverlay({
+  handle,
+  W,
+  H,
+  scale,
+}: {
+  handle: CasioHandle;
+  W: number;
+  H: number;
+  scale: number;
+}) {
+  // Reference viewBox is 1480x1311, scaled to W x H. We map L/C/A
+  // button regions (in viewBox units) to pixel positions.
+  // L (top-left): x=104..149, y=477..547 → ~7% x, ~37% y
+  // C (bottom-left): x=104..149, y=777..847 → ~7% x, ~60% y
+  // A (right): x=1330..1375, y=777..847 → ~91% x, ~60% y
+  const btnW = 30 * scale * 0.5;
+  const btnH = 70 * scale * 0.5;
+  const lX = (104 / 1480) * W - btnW / 2;
+  const cX = (104 / 1480) * W - btnW / 2;
+  const aX = (1330 / 1480) * W - btnW / 2;
+  const lY = (477 / 1311) * H - btnH / 2;
+  const cY = (777 / 1311) * H - btnH / 2;
+  const aY = (777 / 1311) * H - btnH / 2;
+
+  const button = (label: string, x: number, y: number) => (
+    <button
+      type="button"
+      aria-label={label}
+      onPointerDown={() => {
+        if (label === 'L') handle.pressL();
+        else if (label === 'A') handle.pressA();
+        else handle.pressC();
+      }}
+      onPointerUp={() => {
+        if (label === 'L') handle.releaseL();
+        else if (label === 'A') handle.releaseA();
+        else handle.releaseC();
+      }}
+      onPointerLeave={() => {
+        // Cancel any held press if the cursor leaves the button.
+        if (label === 'A') handle.releaseA();
+        else if (label === 'L') handle.releaseL();
+        else handle.releaseC();
+      }}
+      style={{
+        position: 'absolute',
+        left: x,
+        top: y,
+        width: btnW,
+        height: btnH,
+        background: 'transparent',
+        border: 'none',
+        cursor: 'pointer',
+      }}
+    />
+  );
+
+  return (
+    <>
+      {button('L', lX, lY)}
+      {button('C', cX, cY)}
+      {button('A', aX, aY)}
+    </>
+  );
+}
+
+// --------------------------------------------------------------------------
+// computeCasioVisibility — port of the reference's _updateClockValues
+// logic for each menu. Returns the per-element visibility set the
+// CasioSvgEmbed applies to the SVG.
+// --------------------------------------------------------------------------
+
+function computeCasioVisibility(
+  casio: CasioHandle,
+  now: Date,
+): {
+  chars: Record<string, string>;
+  flags: Record<string, boolean>;
+} {
+  const { state, flags, stopwatchMs } = casio;
   const hours = now.getHours();
   const minutes = now.getMinutes();
   const seconds = now.getSeconds();
-  const displayHours = hours > 12 ? hours - 12 : hours;
+  const displayHours = flags.timeMode12
+    ? hours > 12
+      ? hours - 12
+      : hours
+    : hours;
   const dayLetters = now
     .toLocaleDateString('en-US', { weekday: 'long' })
     .slice(0, 2)
     .toUpperCase();
   const dayNum = now.getDate();
+  const pad2 = (n: number) => String(n).padStart(2, '0');
 
-  // Build a per-element "should be visible" set. Reference uses
-  // displayScreen(id, display) which sets element.style.opacity.
-  // We postMessage the list to the embedded SVG, which runs an
-  // inline script to apply it.
-  //
-  // Maps every interactive element id to true/false.
-  const visibility = useMemo(() => {
-    const hh1 = displayHours >= 10 ? String(Math.floor(displayHours / 10)) : ' ';
-    const hh2 = String(displayHours % 10);
-    const mm1 = minutes >= 10 ? String(Math.floor(minutes / 10)) : '0';
-    const mm2 = String(minutes % 10);
-    const ss1 = String(Math.floor(seconds / 10));
-    const ss2 = String(seconds % 10);
-    const d1 = dayNum >= 10 ? String(Math.floor(dayNum / 10)) : ' ';
-    const d2 = String(dayNum % 10);
+  // Common per-frame values
+  const hh1 = displayHours >= 10 ? String(Math.floor(displayHours / 10)) : ' ';
+  const hh2 = String(displayHours % 10);
+  const mm1 = pad2(minutes)[0];
+  const mm2 = pad2(minutes)[1];
+  const ss1 = pad2(seconds)[0];
+  const ss2 = pad2(seconds)[1];
+  const d1 = dayNum >= 10 ? String(Math.floor(dayNum / 10)) : ' ';
+  const d2 = String(dayNum % 10);
+
+  const baseFlags = {
+    alarmOnMark: flags.alarmOn,
+    timeSignalOnMark: flags.hourlyChime,
+    timeMode12: flags.timeMode12,
+    timeMode24: !flags.timeMode12,
+    lap: false,
+    dots: true,
+    light: flags.light,
+  };
+
+  if (state.menu === 'dateTime') {
+    if (state.action === 'casio') {
+      // CA510 easter egg: mode display shows "CA5" (top) and "10" (bottom).
+      return {
+        chars: {
+          mode_2: 'C', mode_1: 'A',
+          day_2: '5', day_1: '1',
+          hour_2: '0', hour_1: ' ',
+          minute_2: ' ', minute_1: ' ',
+          second_2: ' ', second_1: ' ',
+        },
+        flags: { ...baseFlags, dots: false },
+      };
+    }
     return {
-      chars: { mode_2: dayLetters[0], mode_1: dayLetters[1], day_2: d1, day_1: d2,
-               hour_2: hh1, hour_1: hh2, minute_2: mm1, minute_1: mm2, second_2: ss1, second_1: ss2 },
-      flags: {
-        alarmOnMark: true,
-        timeSignalOnMark: true,
-        timeMode12: true,
-        timeMode24: false,
-        lap: false,
-        dots: true,
-        light: false,
+      chars: {
+        mode_2: dayLetters[0], mode_1: dayLetters[1],
+        day_2: d1, day_1: d2,
+        hour_2: hh1, hour_1: hh2,
+        minute_2: mm1, minute_1: mm2,
+        second_2: ss1, second_1: ss2,
       },
+      flags: baseFlags,
     };
-  }, [displayHours, minutes, seconds, dayNum, dayLetters]);
+  }
 
-  return (
-    <div
-      style={{ width: W, height: H, position: 'relative' }}
-    >
-      <CasioSvgEmbed visibility={visibility} />
-    </div>
-  );
+  if (state.menu === 'dailyAlarm') {
+    // Alarm screen. Show alarm time (HH MM) and "AL" mode label.
+    const alarmH = displayHours;
+    const alarmM = minutes; // Reference uses the same minutes as time
+    const aH1 = alarmH >= 10 ? String(Math.floor(alarmH / 10)) : ' ';
+    const aH2 = String(alarmH % 10);
+    return {
+      chars: {
+        mode_2: 'A', mode_1: 'L',
+        day_2: ' ', day_1: ' ',
+        hour_2: aH1, hour_1: aH2,
+        minute_2: alarmM >= 10 ? String(Math.floor(alarmM / 10)) : '0',
+        minute_1: String(alarmM % 10),
+        second_2: ' ', second_1: ' ',
+      },
+      flags: { ...baseFlags, dots: state.action === 'default' },
+    };
+  }
+
+  if (state.menu === 'stopwatch') {
+    // Stopwatch shows minutes:seconds.hundredths (7 digits total).
+    const totalMs = Math.floor(stopwatchMs);
+    const m = Math.floor(totalMs / 60_000);
+    const s = Math.floor((totalMs % 60_000) / 1000);
+    const cs = Math.floor((totalMs % 1000) / 10); // hundredths of a second
+    return {
+      chars: {
+        mode_2: 'S', mode_1: 'T',
+        day_2: ' ', day_1: ' ',
+        hour_2: m > 9 ? String(Math.floor(m / 10)) : ' ',
+        hour_1: String(m % 10),
+        minute_2: s >= 10 ? String(Math.floor(s / 10)) : '0',
+        minute_1: String(s % 10),
+        second_2: String(Math.floor(cs / 10)),
+        second_1: String(cs % 10),
+      },
+      flags: { ...baseFlags, lap: state.action === 'modified' },
+    };
+  }
+
+  // setDateTime — show time/date, but blink the field being edited.
+  const blink = (v: string, on: boolean) => (on ? ' ' : v);
+  const blinkHour1 = state.action === 'edit-hours' ? blink(hh2, true) : hh2;
+  const blinkHour2 = state.action === 'edit-hours' ? blink(hh1, true) : hh1;
+  const blinkMin1 = state.action === 'edit-minutes' ? blink(mm2, true) : mm2;
+  const blinkMin2 = state.action === 'edit-minutes' ? blink(mm1, true) : mm1;
+  const dayChars =
+    state.action === 'edit-day-number' ? [' ', ' '] : [d1, d2];
+  return {
+    chars: {
+      mode_2: dayLetters[0], mode_1: dayLetters[1],
+      day_2: dayChars[0], day_1: dayChars[1],
+      hour_2: blinkHour2, hour_1: blinkHour1,
+      minute_2: blinkMin2, minute_1: blinkMin1,
+      second_2: ' ', second_1: ' ',
+    },
+    flags: { ...baseFlags, dots: state.action === 'default' },
+  };
 }
 
 // --------------------------------------------------------------------------
