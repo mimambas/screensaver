@@ -27,17 +27,31 @@ export function DigitalClock({
   size?: ClockSize;
   soundEnabled?: boolean;
 }) {
-  // Tick at 1s. The `now` prop drives the casio and flip clock's
-  // second-roll animation; on a 1s tick the second_2/second_1 digits
-  // swap correctly.
+  // Tick at 1s when the tab is visible; back off to 1/minute when
+  // hidden. Battery saver kicks in when the user walks away.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => setTick((n) => (n + 1) | 0), 1000);
-    return () => clearInterval(id);
+    let id: number;
+    const arm = () => {
+      const visible = document.visibilityState === 'visible';
+      const period = visible ? 1000 : 60_000;
+      id = window.setInterval(() => setTick((n) => (n + 1) | 0), period);
+    };
+    arm();
+    const onVis = () => {
+      window.clearInterval(id);
+      arm();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, []);
   // Recreate `now` on every tick. The interval above guarantees
-  // `tick` changes once per second, which (via deps) re-derives `now`.
+  // `tick` changes on a 1s (visible) or 60s (hidden) cadence, which
+  // (via deps) re-derives `now`.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const now = useMemo(() => new Date(), [tick]);
 
@@ -94,14 +108,49 @@ function AnalogClock({
   const r = size / 2 - 10;
   const hex = getColor(color);
 
+  // Drive the second hand smoothly with rAF instead of waiting for
+  // the 1s parent tick. We capture `now` from props but use a local
+  // rAF cycle for the smooth sweep — this is decoupled from the rest
+  // of the clock (hour/minute still snap on the 1s tick).
+  const [ms, setMs] = useState(() => now.getMilliseconds());
+  const startRef = useRef<number>(0);
+  const baseNowRef = useRef<number>(0);
+  const rafRef = useRef<number | null>(null);
+  // Initialize the refs once on mount; performance.now() is impure
+  // so we have to defer it out of render.
+  useEffect(() => {
+    baseNowRef.current = now.getTime() - now.getMilliseconds();
+    startRef.current = performance.now();
+  }, []); // run once on mount
+  useEffect(() => {
+    // When `now` changes (the parent tick fires), re-anchor the
+    // baseline so the rAF loop stays in sync with the new second.
+    baseNowRef.current = now.getTime() - now.getMilliseconds();
+    startRef.current = performance.now();
+  }, [now]);
+  useEffect(() => {
+    const tick = () => {
+      const elapsed = performance.now() - startRef.current;
+      const derived = (baseNowRef.current + elapsed) % 1000;
+      setMs(derived);
+      rafRef.current = window.requestAnimationFrame(tick);
+    };
+    rafRef.current = window.requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current !== null) window.cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
   const h = now.getHours() % 12;
   const m = now.getMinutes();
   const s = now.getSeconds();
-  const ms = now.getMilliseconds();
+  // The smooth second fraction. The parent's `now` updates once per
+  // second; we interpolate within the second using rAF-driven `ms`.
+  const secFraction = s + ms / 1000;
 
   const hourAngle = ((h + m / 60) * 30 - 90) * (Math.PI / 180);
   const minAngle = ((m + s / 60) * 6 - 90) * (Math.PI / 180);
-  const secAngle = ((s + ms / 1000) * 6 - 90) * (Math.PI / 180);
+  const secAngle = (secFraction * 6 - 90) * (Math.PI / 180);
 
   const hourLen = r * 0.55;
   const minLen = r * 0.8;

@@ -48,6 +48,8 @@ type PersistedSettings = {
   showAlarms: boolean;
   flipSound: boolean;
   city: string;
+  /** Auto-switch theme by local hour (6-18 = light, else dark). */
+  autoTheme: boolean;
 };
 
 const DEFAULTS: PersistedSettings = {
@@ -66,6 +68,7 @@ const DEFAULTS: PersistedSettings = {
   showAlarms: true,
   flipSound: true,
   city: 'Jakarta',
+  autoTheme: false,
 };
 
 function loadSettings(): PersistedSettings {
@@ -93,7 +96,23 @@ export default function App() {
   const [showPomodoro, setShowPomodoro] = useState(initial.showPomodoro);
   const [showDayProgress, setShowDayProgress] = useState(initial.showDayProgress);
   const [showAlarms, setShowAlarms] = useState(initial.showAlarms);
+  const [autoTheme, setAutoTheme] = useState<boolean>(initial.autoTheme);
   const [theme, setTheme] = useState<ThemeName>(initial.theme);
+  // When autoTheme is on, override the user-picked theme based on
+  // local hour. We re-evaluate on a 1-minute interval so the watch
+  // switches theme around sunrise/sunset without the user lifting
+  // a finger. The manual theme picker stays usable in the UI but
+  // its effect is masked while autoTheme is on.
+  useEffect(() => {
+    if (!autoTheme) return;
+    const pick = () => {
+      const h = new Date().getHours();
+      setTheme(h >= 6 && h < 18 ? 'light' : 'dark');
+    };
+    pick();
+    const id = window.setInterval(pick, 60_000);
+    return () => window.clearInterval(id);
+  }, [autoTheme]);
   const [clockStyle, setClockStyle] = useState<ClockStyle>(initial.clockStyle);
   const [clockColor, setClockColor] = useState<ClockColor>(initial.clockColor);
   const [clockSize, setClockSizeRaw] = useState<ClockSize>(clampClockSize(initial.clockSize));
@@ -118,7 +137,7 @@ export default function App() {
         layout, theme, clockStyle, clockColor, clockSize,
         showDate, showWorldClock, showQuote, showWeather,
         showStopwatch, showPomodoro, showDayProgress, showAlarms,
-        flipSound, city,
+        flipSound, city, autoTheme,
       };
       window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(snap));
     } catch {
@@ -128,7 +147,7 @@ export default function App() {
     layout, theme, clockStyle, clockColor, clockSize,
     showDate, showWorldClock, showQuote, showWeather,
     showStopwatch, showPomodoro, showDayProgress, showAlarms,
-    flipSound, city,
+    flipSound, city, autoTheme,
   ]);
 
   const toggleFullscreen = useCallback(async () => {
@@ -249,6 +268,7 @@ export default function App() {
     setShowAlarms(DEFAULTS.showAlarms);
     setFlipSound(DEFAULTS.flipSound);
     setCity(DEFAULTS.city);
+    setAutoTheme(DEFAULTS.autoTheme);
   };
 
   // While asleep, render nothing — black overlay handles the rest.
@@ -434,6 +454,23 @@ export default function App() {
               </button>
             ))}
           </div>
+          <label
+            className={`flex items-center justify-between gap-2 mb-4 px-2 py-1.5 rounded-lg text-xs cursor-pointer ${
+              isDark(theme)
+                ? 'hover:bg-white/5 text-white/80'
+                : isClaude(theme)
+                ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/80'
+                : 'hover:bg-black/5 text-black/80'
+            }`}
+          >
+            <span>Auto theme by hour</span>
+            <input
+              type="checkbox"
+              checked={autoTheme}
+              onChange={(e) => setAutoTheme(e.target.checked)}
+              className="accent-current"
+            />
+          </label>
 
           <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
             Clock Style
