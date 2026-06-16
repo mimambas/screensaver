@@ -24,6 +24,7 @@ import { DayProgress } from './widgets/DayProgress';
 import { useSleepTimer } from './widgets/use-sleep-timer';
 import { SleepTimerOverlay, SleepTimerChip } from './widgets/SleepTimer';
 import { AlarmList } from './widgets/AlarmList';
+import { Timer } from './widgets/Timer';
 
 type Layout = 'classic' | 'split' | 'minimal';
 
@@ -46,6 +47,7 @@ type PersistedSettings = {
   showPomodoro: boolean;
   showDayProgress: boolean;
   showAlarms: boolean;
+  showTimer: boolean;
   flipSound: boolean;
   city: string;
   /** Auto-switch theme by local hour (6-18 = light, else dark). */
@@ -66,6 +68,7 @@ const DEFAULTS: PersistedSettings = {
   showPomodoro: true,
   showDayProgress: true,
   showAlarms: true,
+  showTimer: true,
   flipSound: true,
   city: 'Jakarta',
   autoTheme: false,
@@ -95,6 +98,7 @@ export default function App() {
   const [showStopwatch, setShowStopwatch] = useState(initial.showStopwatch);
   const [showPomodoro, setShowPomodoro] = useState(initial.showPomodoro);
   const [showDayProgress, setShowDayProgress] = useState(initial.showDayProgress);
+  const [showTimer, setShowTimer] = useState(initial.showTimer);
   const [showAlarms, setShowAlarms] = useState(initial.showAlarms);
   const [autoTheme, setAutoTheme] = useState<boolean>(initial.autoTheme);
   const [theme, setTheme] = useState<ThemeName>(initial.theme);
@@ -136,7 +140,7 @@ export default function App() {
       const snap: PersistedSettings = {
         layout, theme, clockStyle, clockColor, clockSize,
         showDate, showWorldClock, showQuote, showWeather,
-        showStopwatch, showPomodoro, showDayProgress, showAlarms,
+        showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
         flipSound, city, autoTheme,
       };
       window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(snap));
@@ -146,7 +150,7 @@ export default function App() {
   }, [
     layout, theme, clockStyle, clockColor, clockSize,
     showDate, showWorldClock, showQuote, showWeather,
-    showStopwatch, showPomodoro, showDayProgress, showAlarms,
+    showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
     flipSound, city, autoTheme,
   ]);
 
@@ -250,6 +254,7 @@ export default function App() {
     setShowPomodoro(false);
     setShowDayProgress(false);
     setShowAlarms(false);
+    setShowTimer(false);
   };
 
   const resetSettings = () => {
@@ -266,6 +271,7 @@ export default function App() {
     setShowPomodoro(DEFAULTS.showPomodoro);
     setShowDayProgress(DEFAULTS.showDayProgress);
     setShowAlarms(DEFAULTS.showAlarms);
+    setShowTimer(DEFAULTS.showTimer);
     setFlipSound(DEFAULTS.flipSound);
     setCity(DEFAULTS.city);
     setAutoTheme(DEFAULTS.autoTheme);
@@ -688,6 +694,7 @@ export default function App() {
               { label: 'Quotes', val: showQuote, set: () => setShowQuote((v) => !v) },
               { label: 'Pomodoro', val: showPomodoro, set: () => setShowPomodoro((v) => !v) },
               { label: 'Stopwatch', val: showStopwatch, set: () => setShowStopwatch((v) => !v) },
+              { label: 'Timer', val: showTimer, set: () => setShowTimer((v) => !v) },
               { label: 'Weather', val: showWeather, set: () => setShowWeather((v) => !v) },
               { label: 'Day Progress', val: showDayProgress, set: () => setShowDayProgress((v) => !v) },
               { label: 'Alarms', val: showAlarms, set: () => setShowAlarms((v) => !v) },
@@ -740,6 +747,80 @@ export default function App() {
             <kbd className="px-1 border border-current/30 rounded">H</kbd> hide UI ·{' '}
             <kbd className="px-1 border border-current/30 rounded">Esc</kbd> close/wake
           </div>
+
+          {/* Settings export / import — sync current config between machines. */}
+          <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
+            Backup
+          </div>
+          <div className="flex gap-1 mb-3">
+            <button
+              type="button"
+              onClick={() => {
+                try {
+                  const raw = window.localStorage.getItem(SETTINGS_KEY) ?? '{}';
+                  const blob = new Blob([raw], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `screensaver-settings-${new Date().toISOString().slice(0, 10)}.json`;
+                  document.body.appendChild(a);
+                  a.click();
+                  a.remove();
+                  URL.revokeObjectURL(url);
+                } catch {
+                  // ignore
+                }
+              }}
+              className={`flex-1 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                isDark(theme)
+                  ? 'bg-white/5 hover:bg-white/15 text-white'
+                  : isClaude(theme)
+                  ? 'bg-[#e8dcc4] hover:bg-[#d4b896] text-[#3a2e1f]'
+                  : 'bg-black/5 hover:bg-black/15 text-black'
+              }`}
+            >
+              Export
+            </button>
+            <label
+              className={`flex-1 px-2 py-1.5 rounded-lg text-xs text-center transition-colors cursor-pointer ${
+                isDark(theme)
+                  ? 'bg-white/5 hover:bg-white/15 text-white'
+                  : isClaude(theme)
+                  ? 'bg-[#e8dcc4] hover:bg-[#d4b896] text-[#3a2e1f]'
+                  : 'bg-black/5 hover:bg-black/15 text-black'
+              }`}
+            >
+              Import
+              <input
+                type="file"
+                accept="application/json"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    try {
+                      const text = String(reader.result);
+                      // Sanity-check: must be a JSON object with a layout
+                      // field (our settings always have one).
+                      const parsed = JSON.parse(text);
+                      if (typeof parsed !== 'object' || parsed === null || !('layout' in parsed)) {
+                        throw new Error('not a settings file');
+                      }
+                      window.localStorage.setItem(SETTINGS_KEY, text);
+                      // Reload to apply.
+                      window.location.reload();
+                    } catch {
+                      // ignore — bad file
+                    }
+                  };
+                  reader.readAsText(file);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+          </div>
         </div>
       )}
 
@@ -750,10 +831,11 @@ export default function App() {
           {showDate && <DateDisplay theme={theme} />}
           {showWorldClock && <WorldClock color={clockColor} theme={theme} />}
 
-          {(showPomodoro || showStopwatch || showDayProgress) && (
+          {(showPomodoro || showStopwatch || showDayProgress || showTimer) && (
             <div className="flex flex-wrap items-start justify-center gap-12 mt-2">
               {showPomodoro && <Pomodoro theme={theme} />}
               {showStopwatch && <Stopwatch theme={theme} />}
+              {showTimer && <Timer theme={theme} />}
               {showDayProgress && <DayProgress theme={theme} city={city} />}
             </div>
           )}
@@ -782,6 +864,7 @@ export default function App() {
           <div className="flex flex-col items-center justify-center gap-8 border-r border-white/10 pr-6">
             {showPomodoro && <Pomodoro theme={theme} />}
             {showStopwatch && <Stopwatch theme={theme} />}
+            {showTimer && <Timer theme={theme} />}
             {showAlarms && <AlarmList theme={theme} />}
           </div>
 
