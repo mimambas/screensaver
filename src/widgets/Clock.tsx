@@ -302,10 +302,14 @@ function CasioClock({
   const casio = useCasioState();
 
   // Compute the per-display characters, exactly like the reference's
-  // OS does. Different menus use different digit fields.
+  // OS does. Different menus use different digit fields. We list
+  // `casio.stopwatchMs` explicitly because the stopwatch increments
+  // out-of-band (via setInterval inside the hook); without it the
+  // memo wouldn't re-fire when the stopwatch ticks.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const visibility = useMemo(() => {
     return computeCasioVisibility(casio, now);
-  }, [casio, now]);
+  }, [casio, now, casio.stopwatchMs]);
 
   // Keyboard bindings: Q/W/E/F → L/A (both W and E for left-hand
   // friendliness) / C. Top-row QWEF mirrors the physical watch's
