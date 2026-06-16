@@ -1,40 +1,157 @@
-import { useState, useEffect, useRef } from 'react';
-import { Maximize2, Minimize2, Settings } from 'lucide-react';
-import { DigitalClock, WorldClock, DateDisplay, CLOCK_STYLES, CLOCK_COLORS, CLOCK_SIZES, type ClockStyle, type ClockColor, type ClockSize } from './widgets/Clock';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Maximize2, Minimize2, Settings, Minus, Plus } from 'lucide-react';
+import {
+  DigitalClock,
+  WorldClock,
+  DateDisplay,
+} from './widgets/Clock';
+import {
+  CLOCK_STYLES,
+  CLOCK_COLORS,
+  CLOCK_SIZES,
+  CLOCK_SIZE_PRESETS,
+  clampClockSize,
+  type ClockStyle,
+  type ClockColor,
+  type ClockSize,
+  type ThemeName,
+} from './widgets/clock-constants';
 import { Pomodoro } from './widgets/Pomodoro';
 import { Stopwatch } from './widgets/Stopwatch';
 import { Weather } from './widgets/Weather';
 import { Quotes } from './widgets/Quotes';
+import { DayProgress } from './widgets/DayProgress';
+import { useSleepTimer } from './widgets/use-sleep-timer';
+import { SleepTimerOverlay, SleepTimerChip } from './widgets/SleepTimer';
+import { AlarmList } from './widgets/AlarmList';
 
 type Layout = 'classic' | 'split' | 'minimal';
-type Theme = 'dark' | 'light' | 'claude';
 
-const isDark = (t: Theme) => t === 'dark';
-const isClaude = (t: Theme) => t === 'claude';
+const isDark = (t: ThemeName) => t === 'dark';
+const isClaude = (t: ThemeName) => t === 'claude';
+
+const SETTINGS_KEY = 'screensaver.settings.v2';
+
+type PersistedSettings = {
+  layout: Layout;
+  theme: ThemeName;
+  clockStyle: ClockStyle;
+  clockColor: ClockColor;
+  clockSize: ClockSize;
+  showDate: boolean;
+  showWorldClock: boolean;
+  showQuote: boolean;
+  showWeather: boolean;
+  showStopwatch: boolean;
+  showPomodoro: boolean;
+  showDayProgress: boolean;
+  showAlarms: boolean;
+  flipSound: boolean;
+  city: string;
+};
+
+const DEFAULTS: PersistedSettings = {
+  layout: 'classic',
+  theme: 'dark',
+  clockStyle: 'digital',
+  clockColor: 'white',
+  clockSize: CLOCK_SIZE_PRESETS.default,
+  showDate: true,
+  showWorldClock: true,
+  showQuote: true,
+  showWeather: true,
+  showStopwatch: true,
+  showPomodoro: true,
+  showDayProgress: true,
+  showAlarms: true,
+  flipSound: true,
+  city: 'Jakarta',
+};
+
+function loadSettings(): PersistedSettings {
+  if (typeof window === 'undefined') return DEFAULTS;
+  try {
+    // v1 → v2 migration: defaults differ in v2 (showDayProgress, showAlarms added).
+    const raw = window.localStorage.getItem(SETTINGS_KEY) ?? window.localStorage.getItem('screensaver.settings.v1');
+    if (!raw) return DEFAULTS;
+    return { ...DEFAULTS, ...(JSON.parse(raw) as Partial<PersistedSettings>) };
+  } catch {
+    return DEFAULTS;
+  }
+}
 
 export default function App() {
-  const [layout, setLayout] = useState<Layout>('classic');
+  const initial = loadSettings();
+
+  const [layout, setLayout] = useState<Layout>(initial.layout);
   const [showSettings, setShowSettings] = useState(false);
-  const [showQuote, setShowQuote] = useState(true);
-  const [showWorldClock, setShowWorldClock] = useState(true);
-  const [showDate, setShowDate] = useState(true);
-  const [showWeather, setShowWeather] = useState(true);
-  const [showStopwatch, setShowStopwatch] = useState(true);
-  const [showPomodoro, setShowPomodoro] = useState(true);
-  const [theme, setTheme] = useState<Theme>('dark');
-  const [clockStyle, setClockStyle] = useState<ClockStyle>('digital');
-  const [clockColor, setClockColor] = useState<ClockColor>('white');
-  const [clockSize, setClockSize] = useState<ClockSize>('md');
+  const [showQuote, setShowQuote] = useState(initial.showQuote);
+  const [showWorldClock, setShowWorldClock] = useState(initial.showWorldClock);
+  const [showDate, setShowDate] = useState(initial.showDate);
+  const [showWeather, setShowWeather] = useState(initial.showWeather);
+  const [showStopwatch, setShowStopwatch] = useState(initial.showStopwatch);
+  const [showPomodoro, setShowPomodoro] = useState(initial.showPomodoro);
+  const [showDayProgress, setShowDayProgress] = useState(initial.showDayProgress);
+  const [showAlarms, setShowAlarms] = useState(initial.showAlarms);
+  const [theme, setTheme] = useState<ThemeName>(initial.theme);
+  const [clockStyle, setClockStyle] = useState<ClockStyle>(initial.clockStyle);
+  const [clockColor, setClockColor] = useState<ClockColor>(initial.clockColor);
+  const [clockSize, setClockSizeRaw] = useState<ClockSize>(clampClockSize(initial.clockSize));
+  // Clamp on every setter so persisted/manual values can't escape the range.
+  const setClockSize = useCallback((v: ClockSize) => {
+    setClockSizeRaw(clampClockSize(v));
+  }, []);
+  const adjustClockSize = useCallback((delta: number) => {
+    setClockSizeRaw((cur) => clampClockSize((cur as number) + delta));
+  }, []);
+  const [flipSound, setFlipSound] = useState(initial.flipSound);
+  const [city, setCity] = useState<string>(initial.city);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [uiVisible, setUiVisible] = useState(true);
-  const idleTimer = useRef<number>();
+  const idleTimer = useRef<number | null>(null);
+  const sleep = useSleepTimer();
+
+  // Persist settings to localStorage whenever they change.
+  useEffect(() => {
+    try {
+      const snap: PersistedSettings = {
+        layout, theme, clockStyle, clockColor, clockSize,
+        showDate, showWorldClock, showQuote, showWeather,
+        showStopwatch, showPomodoro, showDayProgress, showAlarms,
+        flipSound, city,
+      };
+      window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(snap));
+    } catch {
+      // localStorage may be unavailable (private mode, quota); silent fail
+    }
+  }, [
+    layout, theme, clockStyle, clockColor, clockSize,
+    showDate, showWorldClock, showQuote, showWeather,
+    showStopwatch, showPomodoro, showDayProgress, showAlarms,
+    flipSound, city,
+  ]);
+
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        setIsFullscreen(true);
+      } else {
+        await document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    } catch {
+      // Fullscreen API can throw if not user-initiated; ignore
+    }
+  }, []);
 
   // Auto-hide cursor + control buttons
   useEffect(() => {
     const reset = () => {
+      if (sleep.isAsleep) return; // never show UI while sleeping
       document.body.style.cursor = 'default';
       setUiVisible(true);
-      if (idleTimer.current) clearTimeout(idleTimer.current);
+      if (idleTimer.current !== null) window.clearTimeout(idleTimer.current);
       idleTimer.current = window.setTimeout(() => {
         document.body.style.cursor = 'none';
         setUiVisible(false);
@@ -42,22 +159,58 @@ export default function App() {
       }, 3000);
     };
     window.addEventListener('mousemove', reset);
+    window.addEventListener('keydown', reset);
+    window.addEventListener('touchstart', reset);
     reset();
     return () => {
       window.removeEventListener('mousemove', reset);
-      if (idleTimer.current) clearTimeout(idleTimer.current);
+      window.removeEventListener('keydown', reset);
+      window.removeEventListener('touchstart', reset);
+      if (idleTimer.current !== null) window.clearTimeout(idleTimer.current);
     };
+  }, [sleep.isAsleep]);
+
+  // Sync fullscreen state when user exits via Esc / browser chrome
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
 
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen();
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen();
-      setIsFullscreen(false);
-    }
-  };
+  // Keyboard shortcuts — disabled while typing in inputs
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+      const k = e.key.toLowerCase();
+      if (k === 'f') {
+        e.preventDefault();
+        void toggleFullscreen();
+      } else if (k === 's' || k === ',') {
+        e.preventDefault();
+        setShowSettings((v) => !v);
+        setUiVisible(true);
+        if (idleTimer.current !== null) window.clearTimeout(idleTimer.current);
+      } else if (k === 'escape') {
+        if (sleep.isAsleep) {
+          sleep.wake();
+        } else {
+          setShowSettings(false);
+        }
+      } else if (k === 'h') {
+        // Toggle UI hint — useful when taking screenshots
+        setUiVisible((v) => {
+          const next = !v;
+          document.body.style.cursor = next ? 'default' : 'none';
+          return next;
+        });
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [toggleFullscreen, sleep]);
 
   const allWidgetsOff =
     !showDate &&
@@ -65,7 +218,9 @@ export default function App() {
     !showQuote &&
     !showWeather &&
     !showStopwatch &&
-    !showPomodoro;
+    !showPomodoro &&
+    !showDayProgress &&
+    !showAlarms;
 
   const turnOffAll = () => {
     setShowDate(false);
@@ -74,21 +229,32 @@ export default function App() {
     setShowWeather(false);
     setShowStopwatch(false);
     setShowPomodoro(false);
+    setShowDayProgress(false);
+    setShowAlarms(false);
   };
 
   const resetSettings = () => {
-    setLayout('classic');
-    setTheme('dark');
-    setClockStyle('digital');
-    setClockColor('white');
-    setClockSize('md');
-    setShowDate(true);
-    setShowWorldClock(true);
-    setShowQuote(true);
-    setShowWeather(true);
-    setShowStopwatch(true);
-    setShowPomodoro(true);
+    setLayout(DEFAULTS.layout);
+    setTheme(DEFAULTS.theme);
+    setClockStyle(DEFAULTS.clockStyle);
+    setClockColor(DEFAULTS.clockColor);
+    setClockSize(DEFAULTS.clockSize);
+    setShowDate(DEFAULTS.showDate);
+    setShowWorldClock(DEFAULTS.showWorldClock);
+    setShowQuote(DEFAULTS.showQuote);
+    setShowWeather(DEFAULTS.showWeather);
+    setShowStopwatch(DEFAULTS.showStopwatch);
+    setShowPomodoro(DEFAULTS.showPomodoro);
+    setShowDayProgress(DEFAULTS.showDayProgress);
+    setShowAlarms(DEFAULTS.showAlarms);
+    setFlipSound(DEFAULTS.flipSound);
+    setCity(DEFAULTS.city);
   };
+
+  // While asleep, render nothing — black overlay handles the rest.
+  if (sleep.isAsleep) {
+    return <SleepTimerOverlay show onWake={sleep.wake} />;
+  }
 
   return (
     <div
@@ -122,6 +288,15 @@ export default function App() {
         }}
       />
 
+      {/* Sleep timer chip — top left */}
+      <div
+        className={`transition-opacity duration-500 ${
+          uiVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+      >
+        <SleepTimerChip handle={sleep} theme={theme} />
+      </div>
+
       {/* Controls — top right, fade on idle */}
       <div
         className={`absolute top-4 right-4 z-20 flex gap-2 transition-opacity duration-500 ${
@@ -130,19 +305,22 @@ export default function App() {
       >
         <button
           onClick={toggleFullscreen}
+          aria-label="Toggle fullscreen"
           className={`p-2 rounded-full transition-colors ${
             isDark(theme) ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'
           }`}
-          title="Fullscreen"
+          title="Fullscreen (F)"
         >
           {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
         </button>
         <button
           onClick={() => setShowSettings(!showSettings)}
+          aria-label="Toggle settings"
+          aria-expanded={showSettings}
           className={`p-2 rounded-full transition-colors ${
             isDark(theme) ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'
           }`}
-          title="Settings"
+          title="Settings (S)"
         >
           <Settings className="w-4 h-4" />
         </button>
@@ -151,7 +329,9 @@ export default function App() {
       {/* Settings panel */}
       {showSettings && (
         <div
-          className={`absolute top-16 right-4 z-20 backdrop-blur-xl border rounded-2xl p-4 w-64 ${
+          role="dialog"
+          aria-label="Settings"
+          className={`absolute top-16 right-4 z-20 backdrop-blur-xl border rounded-2xl p-4 w-72 max-h-[calc(100vh-5rem)] overflow-y-auto ${
             isDark(theme)
               ? 'bg-black/60 border-white/20 text-white'
               : isClaude(theme)
@@ -190,7 +370,7 @@ export default function App() {
             Theme
           </div>
           <div className="grid grid-cols-3 gap-1 mb-4">
-            {(['dark', 'light', 'claude'] as Theme[]).map((t) => (
+            {(['dark', 'light', 'claude'] as ThemeName[]).map((t) => (
               <button
                 key={t}
                 onClick={() => setTheme(t)}
@@ -221,6 +401,7 @@ export default function App() {
               <button
                 key={s}
                 onClick={() => setClockStyle(s)}
+                aria-pressed={clockStyle === s}
                 className={`px-1 py-2 rounded-lg text-[10px] capitalize transition-colors ${
                   clockStyle === s
                     ? isDark(theme)
@@ -244,27 +425,83 @@ export default function App() {
           <div className="text-xs uppercase tracking-widest opacity-70 mb-3">
             Clock Size
           </div>
-          <div className="grid grid-cols-4 gap-1 mb-4">
+          <div className="flex items-stretch gap-1 mb-4">
+            <button
+              type="button"
+              onClick={() => adjustClockSize(-CLOCK_SIZE_PRESETS.step)}
+              disabled={clockSize <= CLOCK_SIZE_PRESETS.min}
+              aria-label="Decrease clock size"
+              className={`px-2 rounded-lg text-sm transition-colors ${
+                clockSize <= CLOCK_SIZE_PRESETS.min
+                  ? isDark(theme)
+                    ? 'bg-white/5 text-white/30 cursor-not-allowed'
+                    : isClaude(theme)
+                    ? 'bg-[#e8dcc4]/40 text-[#3a2e1f]/30 cursor-not-allowed'
+                    : 'bg-black/5 text-black/30 cursor-not-allowed'
+                  : isDark(theme)
+                  ? 'bg-white/10 hover:bg-white/20 text-white'
+                  : isClaude(theme)
+                  ? 'bg-[#e8dcc4] hover:bg-[#f0e6d2] text-[#3a2e1f]'
+                  : 'bg-black/10 hover:bg-black/20 text-black'
+              }`}
+            >
+              <Minus className="w-3 h-3" />
+            </button>
+            <div
+              className={`flex-1 flex items-baseline justify-center gap-1 rounded-lg tabular-nums ${
+                isDark(theme)
+                  ? 'bg-white/10 text-white'
+                  : isClaude(theme)
+                  ? 'bg-[#e8dcc4] text-[#3a2e1f]'
+                  : 'bg-black/10 text-black'
+              }`}
+            >
+              <span className="text-base font-semibold">{(clockSize as number).toFixed(1)}</span>
+              <span className="text-[10px] opacity-60">×</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => adjustClockSize(CLOCK_SIZE_PRESETS.step)}
+              disabled={clockSize >= CLOCK_SIZE_PRESETS.max}
+              aria-label="Increase clock size"
+              className={`px-2 rounded-lg text-sm transition-colors ${
+                clockSize >= CLOCK_SIZE_PRESETS.max
+                  ? isDark(theme)
+                    ? 'bg-white/5 text-white/30 cursor-not-allowed'
+                    : isClaude(theme)
+                    ? 'bg-[#e8dcc4]/40 text-[#3a2e1f]/30 cursor-not-allowed'
+                    : 'bg-black/5 text-black/30 cursor-not-allowed'
+                  : isDark(theme)
+                  ? 'bg-white/10 hover:bg-white/20 text-white'
+                  : isClaude(theme)
+                  ? 'bg-[#e8dcc4] hover:bg-[#f0e6d2] text-[#3a2e1f]'
+                  : 'bg-black/10 hover:bg-black/20 text-black'
+              }`}
+            >
+              <Plus className="w-3 h-3" />
+            </button>
+          </div>
+          <div className="grid grid-cols-4 gap-1 mb-4 -mt-2">
             {CLOCK_SIZES.map((sz) => (
               <button
-                key={sz.id}
-                onClick={() => setClockSize(sz.id)}
-                className={`px-1 py-2 rounded-lg text-[10px] transition-colors ${
-                  clockSize === sz.id
+                key={sz.label}
+                onClick={() => setClockSize(sz.scale)}
+                aria-pressed={Math.abs((clockSize as number) - sz.scale) < 0.05}
+                className={`px-1 py-1.5 rounded-lg text-[10px] transition-colors ${
+                  Math.abs((clockSize as number) - sz.scale) < 0.05
                     ? isDark(theme)
                       ? 'bg-white/15 text-white'
                       : isClaude(theme)
-                      ? 'bg-[#e8dcc4] text-[#3a2e1f]'
+                      ? 'bg-[#d6c8a8] text-[#3a2e1f]'
                       : 'bg-black/15 text-black'
                     : isDark(theme)
-                    ? 'hover:bg-white/10 text-white/80'
+                    ? 'hover:bg-white/10 text-white/70'
                     : isClaude(theme)
-                    ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/80'
-                    : 'hover:bg-black/10 text-black/80'
+                    ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/70'
+                    : 'hover:bg-black/10 text-black/70'
                 }`}
               >
-                <div className="mb-1 font-bold">{sz.scale}×</div>
-                <div>{sz.label}</div>
+                {sz.label}
               </button>
             ))}
           </div>
@@ -272,33 +509,66 @@ export default function App() {
           <div className="text-xs uppercase tracking-widest opacity-70 mb-3">
             Clock Color
           </div>
-          <div className="grid grid-cols-3 gap-1 mb-4">
-            {CLOCK_COLORS.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setClockColor(c.id)}
-                className={`flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition-colors ${
-                  clockColor === c.id
-                    ? isDark(theme)
-                      ? 'bg-white/15 text-white'
+          <div className="grid grid-cols-3 gap-1 mb-1">
+            {CLOCK_COLORS.map((c) => {
+              // Contrast hint: if user picks white on light theme, or ink on
+              // dark theme, the digits will be invisible. Don't block the
+              // choice — let the user see the result and decide.
+              const poorContrast =
+                (c.id === 'white' && theme !== 'dark') ||
+                (c.id === 'ink' && theme === 'dark');
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => setClockColor(c.id)}
+                  aria-pressed={clockColor === c.id}
+                  title={poorContrast ? 'May be hard to read on this theme' : undefined}
+                  className={`flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition-colors ${
+                    clockColor === c.id
+                      ? isDark(theme)
+                        ? 'bg-white/15 text-white'
+                        : isClaude(theme)
+                        ? 'bg-[#e8dcc4] text-[#3a2e1f]'
+                        : 'bg-black/15 text-black'
+                      : isDark(theme)
+                      ? 'hover:bg-white/10 text-white/80'
                       : isClaude(theme)
-                      ? 'bg-[#e8dcc4] text-[#3a2e1f]'
-                      : 'bg-black/15 text-black'
-                    : isDark(theme)
-                    ? 'hover:bg-white/10 text-white/80'
-                    : isClaude(theme)
-                    ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/80'
-                    : 'hover:bg-black/10 text-black/80'
-                }`}
-              >
-                <span
-                  className="w-3 h-3 rounded-full"
-                  style={{ backgroundColor: c.hex, boxShadow: `0 0 8px ${c.hex}` }}
-                />
-                {c.label}
-              </button>
-            ))}
+                      ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/80'
+                      : 'hover:bg-black/10 text-black/80'
+                  }`}
+                >
+                  <span
+                    className="w-3 h-3 rounded-full shrink-0"
+                    style={{ backgroundColor: c.hex, boxShadow: `0 0 8px ${c.hex}` }}
+                  />
+                  <span className="truncate">{c.label}</span>
+                  {poorContrast && (
+                    <span className="ml-auto text-[10px] opacity-60" aria-hidden>⚠</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
+          <div className={`text-[10px] opacity-50 mb-4 ${isDark(theme) ? 'text-white' : 'text-black'}`}>
+            ⚠ = may be hard to read on this theme
+          </div>
+
+          <div className="text-xs uppercase tracking-widest opacity-70 mb-3">
+            Weather City
+          </div>
+          <input
+            type="text"
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            placeholder="Jakarta, Tokyo, London…"
+            className={`w-full px-3 py-2 rounded-lg text-sm mb-4 outline-none ${
+              isDark(theme)
+                ? 'bg-white/10 text-white placeholder-white/40 focus:bg-white/15'
+                : isClaude(theme)
+                ? 'bg-[#f0e6d2] text-[#3a2e1f] placeholder-[#3a2e1f]/40 focus:bg-[#e8dcc4]'
+                : 'bg-black/5 text-black placeholder-black/40 focus:bg-black/10'
+            }`}
+          />
 
           <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
             Visibility
@@ -340,6 +610,9 @@ export default function App() {
               { label: 'Pomodoro', val: showPomodoro, set: () => setShowPomodoro((v) => !v) },
               { label: 'Stopwatch', val: showStopwatch, set: () => setShowStopwatch((v) => !v) },
               { label: 'Weather', val: showWeather, set: () => setShowWeather((v) => !v) },
+              { label: 'Day Progress', val: showDayProgress, set: () => setShowDayProgress((v) => !v) },
+              { label: 'Alarms', val: showAlarms, set: () => setShowAlarms((v) => !v) },
+              { label: 'Flip Sound', val: flipSound, set: () => setFlipSound((v) => !v) },
             ].map((opt) => (
               <label
                 key={opt.label}
@@ -356,6 +629,7 @@ export default function App() {
                   type="button"
                   role="switch"
                   aria-checked={opt.val}
+                  aria-label={`Toggle ${opt.label}`}
                   onClick={opt.set}
                   className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
                     opt.val
@@ -380,27 +654,36 @@ export default function App() {
               </label>
             ))}
           </div>
+
+          <div className={`text-[10px] mt-4 opacity-40 leading-relaxed ${isDark(theme) ? 'text-white' : 'text-black'}`}>
+            Shortcuts: <kbd className="px-1 border border-current/30 rounded">F</kbd> fullscreen ·{' '}
+            <kbd className="px-1 border border-current/30 rounded">S</kbd> settings ·{' '}
+            <kbd className="px-1 border border-current/30 rounded">H</kbd> hide UI ·{' '}
+            <kbd className="px-1 border border-current/30 rounded">Esc</kbd> close/wake
+          </div>
         </div>
       )}
 
       {/* Layouts */}
       {layout === 'classic' && (
-        <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-8 gap-10">
-          <DigitalClock style={clockStyle} color={clockColor} size={clockSize} />
+        <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-8 gap-8">
+          <DigitalClock style={clockStyle} color={clockColor} size={clockSize} soundEnabled={flipSound} theme={theme} />
           {showDate && <DateDisplay theme={theme} />}
           {showWorldClock && <WorldClock color={clockColor} theme={theme} />}
 
-          {(showPomodoro || showStopwatch) && (
-            <div className="flex flex-wrap items-start justify-center gap-12 mt-4">
+          {(showPomodoro || showStopwatch || showDayProgress) && (
+            <div className="flex flex-wrap items-start justify-center gap-12 mt-2">
               {showPomodoro && <Pomodoro theme={theme} />}
               {showStopwatch && <Stopwatch theme={theme} />}
+              {showDayProgress && <DayProgress theme={theme} city={city} />}
             </div>
           )}
 
-          {(showWeather || showQuote) && (
-            <div className="flex flex-col items-center gap-6 mt-4">
-              {showWeather && <Weather theme={theme} />}
-              {showQuote && <Quotes />}
+          {(showWeather || showQuote || showAlarms) && (
+            <div className="flex flex-col items-center gap-4 mt-2 w-full max-w-md">
+              {showWeather && <Weather theme={theme} city={city} />}
+              {showQuote && <Quotes theme={theme} />}
+              {showAlarms && <AlarmList theme={theme} />}
             </div>
           )}
         </div>
@@ -410,32 +693,35 @@ export default function App() {
         <div className="relative z-10 min-h-screen grid grid-cols-1 md:grid-cols-3 gap-6 p-12">
           {/* Left: time */}
           <div className="flex flex-col items-center justify-center gap-6 border-r border-white/10 pr-6">
-            <DigitalClock style={clockStyle} color={clockColor} size={clockSize} />
+            <DigitalClock style={clockStyle} color={clockColor} size={clockSize} soundEnabled={flipSound} theme={theme} />
             {showDate && <DateDisplay theme={theme} />}
             {showWorldClock && <WorldClock color={clockColor} theme={theme} />}
+            {showDayProgress && <DayProgress theme={theme} city={city} />}
           </div>
 
           {/* Center: tools */}
           <div className="flex flex-col items-center justify-center gap-8 border-r border-white/10 pr-6">
             {showPomodoro && <Pomodoro theme={theme} />}
             {showStopwatch && <Stopwatch theme={theme} />}
+            {showAlarms && <AlarmList theme={theme} />}
           </div>
 
           {/* Right: info */}
           <div className="flex flex-col items-start justify-center gap-6">
-            {showWeather && <Weather theme={theme} />}
-            {showQuote && <Quotes />}
+            {showWeather && <Weather theme={theme} city={city} />}
+            {showQuote && <Quotes theme={theme} />}
           </div>
         </div>
       )}
 
       {layout === 'minimal' && (
         <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-8 gap-8">
-          <DigitalClock style={clockStyle} color={clockColor} size={clockSize} />
+          <DigitalClock style={clockStyle} color={clockColor} size={clockSize} soundEnabled={flipSound} theme={theme} />
           {showDate && <DateDisplay theme={theme} />}
+          {showDayProgress && <DayProgress theme={theme} city={city} />}
           {showQuote && (
             <div className="absolute bottom-8">
-              <Quotes />
+              <Quotes theme={theme} />
             </div>
           )}
         </div>
