@@ -231,16 +231,23 @@ function RetroClock({
 }
 
 // --------------------------------------------------------------------------
-// Casio F-91W-style LCD clock
-// Black resin case, faint green LCD (positive display, not negative).
-// Module 593 layout: weekday + date on top, big time digits in the
-// middle, AM/PM + seconds + mode label at the bottom. We render the
-// mode label as "WATER RESIST" (the front-of-case marking) to give
-// the iconic feel.
+// Casio F-91W — ported from https://github.com/dundalek/casio-f91w-fsm
+// (interactive F-91W model by Jakub Dundalek + Alexis Philip, licensed MIT)
 //
-// Reference: https://en.wikipedia.org/wiki/Casio_F-91W
-//   "faint green LED" backlight, top row day+date, center time,
-//   bottom row PM/24H + seconds, alarm "bar of vertical lines" indicator.
+// The reference is a statechart-driven full F-91W emulation: 4 menus
+// (dateTime, dailyAlarm, stopwatch, setDateTime), 3 buttons (L C A),
+// real Module 593 behaviour including the CA510 easter egg (hold A
+// for 3s on the time screen).
+//
+// We render the same display: a 7-/8-/9-segment LCD inside a black
+// resin case, using the same charToSegments segment table from
+// `CasioF91WDigitalDisplay.js` (digits 0-9 + A C E F H I L O S U +
+// " " for blank). EuroStyle font (the real Casio face font) for the
+// case branding, monospace for the LCD text.
+//
+// We don't emulate the buttons or state machine — for a screensaver
+// the time/date display is what matters. But the layout, segment
+// shapes, and case details match the reference faithfully.
 // --------------------------------------------------------------------------
 
 function CasioClock({
@@ -253,217 +260,460 @@ function CasioClock({
   size?: ClockSize;
 }) {
   const scale = getSizeScale(sizeProp);
-  // Real F-91W is ~37mm wide. We use 240x96 viewbox at scale=1, which
-  // matches the aspect ratio of the real face (~37:15 mm).
-  const W = 240 * scale;
-  const H = 96 * scale;
-  const radius = 6 * scale;
-  const padding = 6 * scale;
-  // LCD area inside the case
-  const lcdInset = 8 * scale;
-  const lcdW = W - lcdInset * 2;
-  const lcdH = H - lcdInset * 2;
+  // The reference SVG is 1480x1311. Aspect ratio ≈ 1.13. We use 360x320
+  // viewbox at scale=1, which keeps the proportions and gives a
+  // comfortable size on screen.
+  const W = 360 * scale;
+  const H = 320 * scale;
+  const caseRadius = 18 * scale;
+  const bezelInset = 18 * scale;
+  const innerRadius = 6 * scale;
 
-  // Time strings
-  const hh = String(now.getHours()).padStart(2, '0');
-  const mm = String(now.getMinutes()).padStart(2, '0');
-  const ss = String(now.getSeconds()).padStart(2, '0');
-  const isPM = now.getHours() >= 12;
+  // Time and date components, matching the reference's display mapping
+  // for the default dateTime menu.
+  const hours = now.getHours();
+  const minutes = now.getMinutes();
+  const seconds = now.getSeconds();
+  const isPM = hours >= 12;
+  // Reference shows 12-hour mode by default, with PM indicator.
+  // We follow that: if hour > 12, subtract 12. (24h mode would show
+  // hours as-is; toggleable in the real watch via holding C on time.)
+  const displayHours = hours > 12 ? hours - 12 : hours;
+  const hh1 = displayHours >= 10 ? Math.floor(displayHours / 10).toString() : ' ';
+  const hh2 = (displayHours % 10).toString();
+  const mm1 = minutes >= 10 ? Math.floor(minutes / 10).toString() : '0';
+  const mm2 = (minutes % 10).toString();
+  const ss1 = Math.floor(seconds / 10).toString();
+  const ss2 = (seconds % 10).toString();
+  const dayLetters = now.toLocaleDateString('en-US', { weekday: 'long' }).slice(0, 2).toUpperCase();
+  const dayNum = now.getDate();
+  const day1 = dayNum >= 10 ? Math.floor(dayNum / 10).toString() : ' ';
+  const day2 = (dayNum % 10).toString();
 
-  // Date strings
-  const dayShort = now.toLocaleDateString(undefined, { weekday: 'short' }).toUpperCase();
-  const dateNum = String(now.getDate()).padStart(2, '0');
-
-  // LCD colors: faint green-cyan positive display on dark background.
-  // The case is a subtle vertical gradient; the LCD itself is a
-  // tinted dark green-black. The actual digit/label colors come from
-  // `tint` below, which is driven by the user's chosen clock color.
-  // Allow the user to tint the LCD color (via the clockColor picker).
-  // 'ink' / 'white' / 'cyan' / etc. map to a green-tinted analog.
+  // LCD colors
   const caseBg = '#0a0a0a';
+  const lcdBg = '#1a1f1c';
   const tint = useCasioTint(color);
+
+  // Segment display parameters
+  const segW = 22 * scale;
+  const segH = 38 * scale;
+  const segT = 4 * scale; // segment thickness
+  const segGap = 2 * scale;
+  const segColor = tint.digit;
+  const segOff = 'transparent';
 
   return (
     <div
       style={{
         width: W,
         height: H,
-        background: `linear-gradient(180deg, #1a1a1a 0%, ${caseBg} 50%, #050505 100%)`,
-        borderRadius: radius,
+        background: `linear-gradient(165deg, #2a2a2a 0%, ${caseBg} 35%, #050505 100%)`,
+        borderRadius: caseRadius,
         position: 'relative',
-        boxShadow: `0 ${4 * scale}px ${12 * scale}px rgba(0,0,0,0.6), inset 0 ${1 * scale}px 0 rgba(255,255,255,0.08), inset 0 -${1 * scale}px 0 rgba(0,0,0,0.5)`,
-        padding,
-        fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+        boxShadow: `0 ${6 * scale}px ${20 * scale}px rgba(0,0,0,0.7), inset 0 ${1 * scale}px 0 rgba(255,255,255,0.1), inset 0 -${2 * scale}px ${4 * scale}px rgba(0,0,0,0.6)`,
+        fontFamily: 'EuroStyle, Calibri, ui-sans-serif, system-ui, sans-serif',
       }}
     >
-      {/* "CASIO" branding on the case (top-left of LCD area) */}
+      {/* "CASIO" branding — top-left of case, like the real watch */}
       <div
         style={{
           position: 'absolute',
-          top: padding + 2 * scale,
-          left: padding + 4 * scale,
-          fontSize: 7 * scale,
-          fontWeight: 800,
-          letterSpacing: `${1 * scale}px`,
-          color: '#9a9a9a',
-          fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+          top: 8 * scale,
+          left: 14 * scale,
+          fontSize: 13 * scale,
+          fontWeight: 700,
+          letterSpacing: `${1.5 * scale}px`,
+          color: '#a0a0a0',
         }}
       >
         CASIO
       </div>
+      {/* "WATER RESIST" — top-right */}
       <div
         style={{
           position: 'absolute',
-          top: padding + 2 * scale,
-          right: padding + 4 * scale,
-          fontSize: 5 * scale,
-          color: '#6a6a6a',
-          fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+          top: 11 * scale,
+          right: 14 * scale,
+          fontSize: 7 * scale,
+          letterSpacing: `${0.5 * scale}px`,
+          color: '#707070',
         }}
       >
         WATER RESIST
       </div>
-
-      {/* LCD panel */}
+      {/* Module label — bottom-right of case */}
       <div
         style={{
-          position: 'relative',
-          width: lcdW,
-          height: lcdH,
-          margin: `${10 * scale}px 0 0 0`,
-          background: '#0d1612',
-          borderRadius: 2 * scale,
-          boxShadow: `inset 0 0 ${4 * scale}px rgba(0,0,0,0.8), inset 0 0 ${10 * scale}px rgba(120, 200, 130, 0.04)`,
-          overflow: 'hidden',
-          // Faint pixel grid texture to evoke the LCD dot matrix
-          backgroundImage: `repeating-linear-gradient(0deg, transparent 0, transparent ${2 * scale}px, rgba(120, 200, 130, 0.02) ${2 * scale}px, rgba(120, 200, 130, 0.02) ${3 * scale}px)`,
+          position: 'absolute',
+          bottom: 9 * scale,
+          right: 14 * scale,
+          fontSize: 6 * scale,
+          letterSpacing: `${0.5 * scale}px`,
+          color: '#555555',
         }}
       >
-        {/* Top row: weekday + date */}
-        <div
-          style={{
-            position: 'absolute',
-            top: 2 * scale,
-            left: 4 * scale,
-            right: 4 * scale,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            fontSize: 7 * scale,
-            lineHeight: 1,
-            color: tint.label,
-            fontWeight: 600,
-            letterSpacing: `${0.5 * scale}px`,
-          }}
-        >
-          <span>{dayShort}</span>
-          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{dateNum}</span>
-        </div>
+        MOD 593
+      </div>
 
-        {/* Center: large time HH:MM */}
+      {/* LCD bezel — the recessed black ring around the LCD */}
+      <div
+        style={{
+          position: 'absolute',
+          top: bezelInset,
+          left: bezelInset,
+          right: bezelInset,
+          bottom: bezelInset,
+          background: 'linear-gradient(180deg, #050505 0%, #1a1a1a 50%, #050505 100%)',
+          borderRadius: innerRadius,
+          padding: 4 * scale,
+          boxShadow: `inset 0 ${2 * scale}px ${4 * scale}px rgba(0,0,0,0.9), inset 0 -${1 * scale}px ${2 * scale}px rgba(255,255,255,0.05)`,
+        }}
+      >
+        {/* LCD panel itself */}
         <div
           style={{
-            position: 'absolute',
-            top: '50%',
-            left: 0,
-            right: 0,
-            transform: 'translateY(-50%)',
-            display: 'flex',
-            alignItems: 'baseline',
-            justifyContent: 'center',
-            gap: 2 * scale,
+            position: 'relative',
+            width: '100%',
+            height: '100%',
+            background: lcdBg,
+            borderRadius: 2 * scale,
+            overflow: 'hidden',
+            // Faint pixel grid texture (LCD dot matrix)
+            backgroundImage: `repeating-linear-gradient(0deg, transparent 0, transparent ${2 * scale}px, rgba(150, 220, 160, 0.025) ${2 * scale}px, rgba(150, 220, 160, 0.025) ${3 * scale}px)`,
+            boxShadow: `inset 0 0 ${6 * scale}px rgba(0,0,0,0.6)`,
           }}
         >
-          <span
+          {/* --- Top-left: mode indicator (2x 7/8/9-seg displays) --- */}
+          <div
             style={{
-              fontSize: 32 * scale,
-              lineHeight: 1,
-              color: tint.digit,
-              fontWeight: 700,
-              fontVariantNumeric: 'tabular-nums',
-              textShadow: `0 0 ${4 * scale}px ${tint.glow}`,
-              letterSpacing: `${1 * scale}px`,
+              position: 'absolute',
+              top: 8 * scale,
+              left: 8 * scale,
+              display: 'flex',
+              gap: 2 * scale,
             }}
           >
-            {hh}
-            <span style={{ opacity: 0.4 }}>:</span>
-            {mm}
-          </span>
-        </div>
+            <SegmentDisplay char={dayLetters[0]} segments={9} w={segW * 0.85} h={segH * 0.7} t={segT * 0.8} gap={segGap} color={segColor} off={segOff} glow={tint.glow} scale={scale} />
+            <SegmentDisplay char={dayLetters[1]} segments={8} w={segW * 0.85} h={segH * 0.7} t={segT * 0.8} gap={segGap} color={segColor} off={segOff} glow={tint.glow} scale={scale} />
+          </div>
 
-        {/* Bottom row: AM/PM + seconds + alarm/chime indicators */}
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 2 * scale,
-            left: 4 * scale,
-            right: 4 * scale,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            fontSize: 7 * scale,
-            lineHeight: 1,
-            color: tint.label,
-            fontWeight: 600,
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          {/* AM/PM indicator — typical LCD shows the active one, dims the other */}
-          <span style={{ display: 'flex', gap: 4 * scale }}>
-            <span
-              style={{
-                opacity: isPM ? 0.35 : 1,
-                color: isPM ? tint.label : tint.digit,
-                textShadow: isPM ? 'none' : `0 0 ${3 * scale}px ${tint.glow}`,
-              }}
-            >
-              AM
-            </span>
-            <span
-              style={{
-                opacity: isPM ? 1 : 0.35,
-                color: isPM ? tint.digit : tint.label,
-                textShadow: isPM ? `0 0 ${3 * scale}px ${tint.glow}` : 'none',
-              }}
-            >
-              PM
-            </span>
-          </span>
+          {/* --- Top-right: day-of-month (2x 7-seg) + alarm + signal icons --- */}
+          <div
+            style={{
+              position: 'absolute',
+              top: 12 * scale,
+              right: 8 * scale,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4 * scale,
+            }}
+          >
+            {/* Day-of-month digits */}
+            <div style={{ display: 'flex', gap: 2 * scale }}>
+              <SegmentDisplay char={day1} segments={7} w={segW * 0.7} h={segH * 0.6} t={segT * 0.7} gap={segGap} color={segColor} off={segOff} glow={tint.glow} scale={scale} />
+              <SegmentDisplay char={day2} segments={7} w={segW * 0.7} h={segH * 0.6} t={segT * 0.7} gap={segGap} color={segColor} off={segOff} glow={tint.glow} scale={scale} />
+            </div>
+            {/* Alarm + signal icons */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 * scale, marginLeft: 4 * scale }}>
+              <AlarmBellIcon color={segColor} glow={tint.glow} scale={scale} />
+              <SignalIcon color={segColor} glow={tint.glow} scale={scale} />
+            </div>
+          </div>
 
-          {/* Seconds */}
-          <span style={{ color: tint.digit, textShadow: `0 0 ${3 * scale}px ${tint.glow}` }}>
-            {ss}
-          </span>
+          {/* --- Middle: colon dots (left) + time digits (right) --- */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: 14 * scale,
+              right: 14 * scale,
+              transform: 'translateY(-50%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4 * scale,
+            }}
+          >
+            {/* Hours (2 digits) */}
+            <div style={{ display: 'flex', gap: 3 * scale }}>
+              <SegmentDisplay char={hh1} segments={7} w={segW} h={segH} t={segT} gap={segGap} color={segColor} off={segOff} glow={tint.glow} scale={scale} />
+              <SegmentDisplay char={hh2} segments={7} w={segW} h={segH} t={segT} gap={segGap} color={segColor} off={segOff} glow={tint.glow} scale={scale} />
+            </div>
+            {/* Colon dots (between hours and minutes) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 * scale, marginInline: 2 * scale }}>
+              <span style={{ width: 4 * scale, height: 4 * scale, borderRadius: '50%', background: segColor, boxShadow: `0 0 ${3 * scale}px ${tint.glow}` }} />
+              <span style={{ width: 4 * scale, height: 4 * scale, borderRadius: '50%', background: segColor, boxShadow: `0 0 ${3 * scale}px ${tint.glow}` }} />
+            </div>
+            {/* Minutes (2 digits) */}
+            <div style={{ display: 'flex', gap: 3 * scale }}>
+              <SegmentDisplay char={mm1} segments={7} w={segW} h={segH} t={segT} gap={segGap} color={segColor} off={segOff} glow={tint.glow} scale={scale} />
+              <SegmentDisplay char={mm2} segments={7} w={segW} h={segH} t={segT} gap={segGap} color={segColor} off={segOff} glow={tint.glow} scale={scale} />
+            </div>
+          </div>
 
-          {/* Alarm/chime indicators — small dots/bars for alarm (vertical lines)
-              and bell for hourly chime. Show them active to feel "armed". */}
-          <span style={{ display: 'flex', gap: 3 * scale, alignItems: 'center' }}>
-            {/* Alarm: bar of vertical lines (4 short lines) */}
-            <span
-              style={{
-                display: 'inline-flex',
-                gap: 0.5 * scale,
-                color: tint.digit,
-                textShadow: `0 0 ${2 * scale}px ${tint.glow}`,
-              }}
-              aria-label="Alarm on"
-            >
-              <span style={{ borderLeft: `1px solid currentColor`, width: 1, height: 6 * scale }} />
-              <span style={{ borderLeft: `1px solid currentColor`, width: 1, height: 6 * scale }} />
-              <span style={{ borderLeft: `1px solid currentColor`, width: 1, height: 6 * scale }} />
-              <span style={{ borderLeft: `1px solid currentColor`, width: 1, height: 6 * scale }} />
-            </span>
-            {/* Hourly chime: bell shape (use 🔔-like glyph) */}
-            <span
-              style={{ color: tint.digit, textShadow: `0 0 ${2 * scale}px ${tint.glow}` }}
-              aria-label="Hourly chime on"
-            >
-              ♪
-            </span>
-          </span>
+          {/* --- Bottom: seconds (right) + AM/PM (left) --- */}
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 10 * scale,
+              left: 14 * scale,
+              right: 14 * scale,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            {/* AM/PM (left) */}
+            <div style={{ display: 'flex', gap: 4 * scale, alignItems: 'center' }}>
+              <span
+                style={{
+                  fontSize: 9 * scale,
+                  fontWeight: 700,
+                  color: isPM ? tint.label : tint.digit,
+                  opacity: isPM ? 0.35 : 1,
+                  textShadow: isPM ? 'none' : `0 0 ${2 * scale}px ${tint.glow}`,
+                  letterSpacing: `${0.5 * scale}px`,
+                }}
+              >
+                AM
+              </span>
+              <span
+                style={{
+                  fontSize: 9 * scale,
+                  fontWeight: 700,
+                  color: isPM ? tint.digit : tint.label,
+                  opacity: isPM ? 1 : 0.35,
+                  textShadow: isPM ? `0 0 ${2 * scale}px ${tint.glow}` : 'none',
+                  letterSpacing: `${0.5 * scale}px`,
+                }}
+              >
+                PM
+              </span>
+            </div>
+            {/* Seconds (right) */}
+            <div style={{ display: 'flex', gap: 2 * scale }}>
+              <SegmentDisplay char={ss1} segments={7} w={segW * 0.7} h={segH * 0.6} t={segT * 0.7} gap={segGap} color={segColor} off={segOff} glow={tint.glow} scale={scale} />
+              <SegmentDisplay char={ss2} segments={7} w={segW * 0.7} h={segH * 0.6} t={segT * 0.7} gap={segGap} color={segColor} off={segOff} glow={tint.glow} scale={scale} />
+            </div>
+          </div>
         </div>
       </div>
     </div>
+  );
+}
+
+// --------------------------------------------------------------------------
+// SegmentDisplay — generic 7/8/9-segment LCD digit.
+// Segments are labeled A-G (standard) plus H (top-right diagonal) and
+// I (bottom-right diagonal) for 9-segment displays. The 7-seg segment
+// table is from the reference (CasioF91WDigitalDisplay.js); 8/9-seg
+// extra letters are merged in.
+// --------------------------------------------------------------------------
+
+type SegKey = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I';
+
+// Segment ON-set per char, for 7-seg (the most common). 8/9-seg
+// variants override the special letters below.
+const SEVEN_SEG: Record<string, SegKey[]> = {
+  '0': ['A', 'B', 'C', 'D', 'E', 'F'],
+  '1': ['B', 'C'],
+  '2': ['A', 'B', 'D', 'E', 'G'],
+  '3': ['A', 'B', 'C', 'D', 'G'],
+  '4': ['B', 'C', 'F', 'G'],
+  '5': ['A', 'C', 'D', 'F', 'G'],
+  '6': ['A', 'C', 'D', 'E', 'F', 'G'],
+  '7': ['A', 'B', 'C'],
+  '8': ['A', 'B', 'C', 'D', 'E', 'F', 'G'],
+  '9': ['A', 'B', 'C', 'D', 'F', 'G'],
+  A: ['A', 'B', 'C', 'E', 'F', 'G'],
+  C: ['A', 'D', 'E', 'F'],
+  E: ['A', 'D', 'E', 'F', 'G'],
+  F: ['A', 'E', 'F', 'G'],
+  H: ['B', 'C', 'E', 'F', 'G'],
+  I: ['B', 'C'],
+  L: ['D', 'E', 'F'],
+  O: ['A', 'B', 'C', 'D', 'E', 'F'],
+  S: ['A', 'C', 'D', 'F', 'G'],
+  U: ['B', 'C', 'D', 'E', 'F'],
+  ' ': [],
+};
+// 8-seg: adds H as top-right diagonal (used for letters that need a
+// slanted right edge like R).
+const EIGHT_SEG: Record<string, SegKey[]> = {
+  ...SEVEN_SEG,
+  T: ['A', 'E', 'F', 'H'],
+  R: ['A', 'B', 'C', 'E', 'F', 'G', 'H'],
+};
+// 9-seg: adds I as bottom-right diagonal. Used for M, W.
+const NINE_SEG: Record<string, SegKey[]> = {
+  ...EIGHT_SEG,
+  M: ['A', 'B', 'C', 'E', 'F', 'H', 'I'],
+  W: ['B', 'C', 'D', 'E', 'F', 'H', 'I'],
+};
+
+function SegmentDisplay({
+  char,
+  segments,
+  w,
+  h,
+  t,
+  gap,
+  color,
+  off,
+  glow,
+  scale,
+}: {
+  char: string;
+  segments: 7 | 8 | 9;
+  w: number;
+  h: number;
+  t: number;
+  gap: number;
+  color: string;
+  off: string;
+  glow: string;
+  scale: number;
+}) {
+  const table = segments === 9 ? NINE_SEG : segments === 8 ? EIGHT_SEG : SEVEN_SEG;
+  const on = (table[char] ?? table[' '] ?? []) as SegKey[];
+  const isOn = (k: SegKey) => on.includes(k);
+  const fill = (k: SegKey) => (isOn(k) ? color : off);
+  const filter = (k: SegKey) =>
+    isOn(k) ? `drop-shadow(0 0 ${2 * scale}px ${glow})` : undefined;
+
+  // Standard 7-seg layout (in viewBox units of w x h):
+  //   AAAA
+  //  F   B
+  //  F   B
+  //   GGGG
+  //  E   C
+  //  E   C
+  //   DDDD
+  // 8-seg adds H as a diagonal in the top-right corner (B and F area).
+  // 9-seg adds I as a diagonal in the bottom-right corner (C and E area).
+  //
+  // Segment shapes are drawn as polygons so the chamfered ends of
+  // each segment look like the real LCD pixels (small parallelogram).
+  const g = gap;
+  const halfH = h / 2;
+  // Chamfer makes the segment ends look like 7-seg displays (slight
+  // diagonal cut instead of a hard rectangle).
+  const chamfer = t * 0.3;
+
+  // Horizontal segment (A, D, G): a flattened hexagon spanning full width.
+  const horizSeg = (y: number) => {
+    return `${g + chamfer},${y} ${w - g - chamfer},${y} ${w - g - chamfer - t * 0.5},${y + t * 0.5} ${w - g - chamfer},${y + t} ${g + chamfer},${y + t} ${g + chamfer + t * 0.5},${y + t * 0.5}`;
+  };
+
+  // Vertical segment (B, C, E, F): a hexagon spanning half height.
+  const vertSeg = (x: number) => {
+    return `${x},${g + chamfer} ${x + t},${g + chamfer + t * 0.5} ${x + t},${halfH - chamfer - t * 0.5} ${x},${halfH - chamfer} ${x},${halfH - chamfer} ${x - t * 0},${halfH - chamfer}`;
+  };
+
+  // Diagonal segment (H, I): a thin parallelogram for the slanted edge.
+  const diagSegTR = () => {
+    // H sits in the top-right corner: spans from middle-right (B) to
+    // top-right corner, slanting outward.
+    return `${w - g - t},${g + chamfer * 2} ${w - g},${g + chamfer + t} ${w - g},${halfH - chamfer - t * 0.5} ${w - g - t},${halfH - chamfer - t} ${w - g - t * 1.6},${g + chamfer * 2 + t}`;
+  };
+  const diagSegBR = () => {
+    // I sits in the bottom-right corner: from middle-right (C) to
+    // bottom-right corner.
+    return `${w - g},${halfH + chamfer + t * 0.5} ${w - g - t},${halfH + chamfer + t} ${w - g - t},${h - g - chamfer - t} ${w - g},${h - g - chamfer} ${w - g - t * 1.6},${h - g - chamfer - t * 1.5}`;
+  };
+
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+      <g>
+        {/* A — top horizontal */}
+        <polygon points={horizSeg(g)} fill={fill('A')} style={{ filter: filter('A') }} />
+        {/* B — top-right vertical */}
+        <polygon points={vertSeg(w - g - t)} fill={fill('B')} style={{ filter: filter('B') }} />
+        {/* C — bottom-right vertical */}
+        <polygon
+          points={`${w - g - t},${halfH + chamfer} ${w - g},${halfH + chamfer + t * 0.5} ${w - g},${h - g - chamfer} ${w - g - t},${h - g - chamfer - t * 0.5} ${w - g - t * 1.6},${halfH + chamfer + t}`}
+          fill={fill('C')}
+          style={{ filter: filter('C') }}
+        />
+        {/* D — bottom horizontal */}
+        <polygon
+          points={`${g + chamfer + t * 0.5},${h - g - t} ${w - g - chamfer - t * 0.5},${h - g - t} ${w - g - chamfer},${h - g} ${g + chamfer},${h - g} ${g + chamfer + t * 0.5},${h - g - t}`}
+          fill={fill('D')}
+          style={{ filter: filter('D') }}
+        />
+        {/* E — bottom-left vertical */}
+        <polygon
+          points={`${g},${halfH + chamfer} ${g + t},${halfH + chamfer + t * 0.5} ${g + t},${h - g - chamfer - t * 0.5} ${g},${h - g - chamfer} ${g + t * 0.5},${halfH + chamfer + t}`}
+          fill={fill('E')}
+          style={{ filter: filter('E') }}
+        />
+        {/* F — top-left vertical */}
+        <polygon
+          points={`${g + t},${g + chamfer + t * 0.5} ${g},${g + chamfer} ${g},${halfH - chamfer} ${g + t},${halfH - chamfer - t * 0.5} ${g + t * 1.6},${g + chamfer + t * 1.5}`}
+          fill={fill('F')}
+          style={{ filter: filter('F') }}
+        />
+        {/* G — middle horizontal */}
+        <polygon
+          points={`${g + chamfer + t * 0.5},${halfH - t / 2} ${w - g - chamfer - t * 0.5},${halfH - t / 2} ${w - g - chamfer},${halfH} ${w - g - chamfer - t * 0.5},${halfH + t / 2} ${g + chamfer + t * 0.5},${halfH + t / 2} ${g + chamfer},${halfH}`}
+          fill={fill('G')}
+          style={{ filter: filter('G') }}
+        />
+        {/* H — top-right diagonal (8/9-seg only) */}
+        {segments >= 8 && (
+          <polygon points={diagSegTR()} fill={fill('H')} style={{ filter: filter('H') }} />
+        )}
+        {/* I — bottom-right diagonal (9-seg only) */}
+        {segments === 9 && (
+          <polygon points={diagSegBR()} fill={fill('I')} style={{ filter: filter('I') }} />
+        )}
+      </g>
+    </svg>
+  );
+}
+
+// --------------------------------------------------------------------------
+// Alarm bell icon — drawn as an SVG to match the LCD icon style of
+// the real F-91W (small bell with a clapper).
+// --------------------------------------------------------------------------
+
+function AlarmBellIcon({ color, glow, scale }: { color: string; glow: string; scale: number }) {
+  return (
+    <svg width={10 * scale} height={12 * scale} viewBox="0 0 10 12" style={{ filter: `drop-shadow(0 0 ${1.5 * scale}px ${glow})` }}>
+      {/* Bell body */}
+      <path
+        d="M5 1 C 3 1 2 2.5 2 5 L 2 8 L 1.2 9 L 8.8 9 L 8 8 L 8 5 C 8 2.5 7 1 5 1 Z"
+        fill={color}
+      />
+      {/* Clapper */}
+      <circle cx="5" cy="10.5" r="0.7" fill={color} />
+      {/* Top knob */}
+      <rect x="4.2" y="0" width="1.6" height="1" fill={color} />
+    </svg>
+  );
+}
+
+// --------------------------------------------------------------------------
+// Signal/chime icon — five ascending bars (radio signal).
+// --------------------------------------------------------------------------
+
+function SignalIcon({ color, glow, scale }: { color: string; glow: string; scale: number }) {
+  const barW = 1.6 * scale;
+  const gap = 1 * scale;
+  return (
+    <svg width={12 * scale} height={10 * scale} viewBox="0 0 12 10" style={{ filter: `drop-shadow(0 0 ${1.5 * scale}px ${glow})` }}>
+      {[2, 4, 6, 8, 10].map((h, i) => (
+        <rect
+          key={i}
+          x={i * (barW + gap)}
+          y={10 - h}
+          width={barW}
+          height={h}
+          fill={color}
+        />
+      ))}
+    </svg>
   );
 }
 

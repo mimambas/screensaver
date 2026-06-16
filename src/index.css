@@ -8,6 +8,12 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: 'EuroStyle';
+  src: url('/fonts/EuroStyle.ttf') format('truetype');
+  font-display: swap;
+}
+
 * {
   box-sizing: border-box;
 }
