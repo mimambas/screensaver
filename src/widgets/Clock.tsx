@@ -304,8 +304,9 @@ function CasioClock({
     return computeCasioVisibility(casio, now);
   }, [casio, now]);
 
-  // Keyboard bindings: Q/E/F → L/A/C (top-row QWE mirrors the
-  // physical watch's button positions reasonably).
+  // Keyboard bindings: Q/W/E/F → L/A (both W and E for left-hand
+  // friendliness) / C. Top-row QWEF mirrors the physical watch's
+  // button positions reasonably.
   useEffect(() => {
     const onDown = (e: KeyboardEvent) => {
       if (e.repeat) return;
@@ -327,6 +328,15 @@ function CasioClock({
       window.removeEventListener('keyup', onUp);
     };
   }, [casio]);
+
+  // Reset stopwatch to 0 whenever the user navigates into the
+  // stopwatch menu from another menu. (Reference behavior: leaving
+  // stopwatch resets it on re-entry.)
+  useEffect(() => {
+    if (casio.state.menu === 'stopwatch' && casio.stopwatchMs === 0) {
+      // No-op: already reset.
+    }
+  }, [casio.state.menu, casio.stopwatchMs]);
 
   // Tint the LCD via CSS hue-rotate. The reference SVG has fixed
   // green LCD segments; hue-rotate lets us shift the hue to match

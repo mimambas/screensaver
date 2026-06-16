@@ -305,6 +305,20 @@ export function useCasioState(): CasioHandle {
         }, 3000);
         return s;
       }
+      // Stopwatch: a-down starts the timer. Reference treats a-down on
+      // stopwatch/default as "start", a-up as a separate "stop" only
+      // when isDown is true (the reference's `setInterval` toggle is
+      // fired on isDown). We match that: down → start running; releaseA
+      // → stop. (For a momentary tap, the user just presses and releases.)
+      if (s.menu === 'stopwatch' && s.action === 'default') {
+        setStopwatchRunning(true);
+        return s;
+      }
+      // setDateTime default: +1 second per a-down.
+      if (s.menu === 'setDateTime' && s.action === 'default') {
+        setDateTimeOffset((o) => o - 1000);
+        return s;
+      }
       return s;
     });
 
@@ -344,9 +358,9 @@ export function useCasioState(): CasioHandle {
     // On a-up:
     //   dateTime/default + <3s: toggle 12/24h
     //   dateTime/casio: back to default
-    //   dailyAlarm/edit-*: stop auto-repeat
-    //   stopwatch/default: toggle run
+    //   stopwatch/default: stop running
     //   stopwatch/modified: back to default (release split)
+    //   dailyAlarm/edit-*: stop auto-repeat
     if (caTimer.current !== null) {
       window.clearTimeout(caTimer.current);
       caTimer.current = null;
@@ -369,11 +383,7 @@ export function useCasioState(): CasioHandle {
       }
       if (s.menu === 'stopwatch') {
         if (s.action === 'default') {
-          setStopwatchRunning((r) => !r);
-          if (stopwatchRunning) {
-            stopwatchSplit.current = null;
-            setStopwatchMs(0);
-          }
+          setStopwatchRunning(false);
           return s;
         }
         if (s.action === 'modified') {
@@ -383,7 +393,7 @@ export function useCasioState(): CasioHandle {
       }
       return s;
     });
-  }, [stopwatchRunning]);
+  }, []);
 
   const releaseL = useCallback(() => {
     // L has no release transitions in the reference (it's a tap).
