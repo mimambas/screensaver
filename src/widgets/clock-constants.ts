@@ -1,10 +1,10 @@
-export type ClockStyle = 'digital' | 'analog' | 'retro' | 'flip';
+export type ClockStyle = 'digital' | 'analog' | 'retro' | 'flip' | 'casio';
 export type ClockColor = 'white' | 'ink' | 'amber' | 'green' | 'cyan' | 'red' | 'pink';
 /** Continuous scale multiplier, 0.5 .. 3.0, step 0.1 */
 export type ClockSize = number;
 export type ThemeName = 'dark' | 'light' | 'claude';
 
-export const CLOCK_STYLES: ClockStyle[] = ['digital', 'analog', 'retro', 'flip'];
+export const CLOCK_STYLES: ClockStyle[] = ['digital', 'analog', 'retro', 'flip', 'casio'];
 /** Preset sizes for the +/- button quick-select. */
 export const CLOCK_SIZE_PRESETS = {
   min: 0.5,

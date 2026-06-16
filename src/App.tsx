@@ -421,7 +421,7 @@ export default function App() {
           <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
             Clock Style
           </div>
-          <div className="grid grid-cols-4 gap-1 mb-4">
+          <div className="grid grid-cols-5 gap-1 mb-4">
             {CLOCK_STYLES.map((s) => (
               <button
                 key={s}
@@ -441,7 +441,7 @@ export default function App() {
                     : 'hover:bg-black/10 text-black/80'
                 }`}
               >
-                {s === 'digital' ? '🔢' : s === 'analog' ? '🕰️' : s === 'retro' ? '📟' : '🔁'}
+                {s === 'digital' ? '🔢' : s === 'analog' ? '🕰️' : s === 'retro' ? '📟' : s === 'flip' ? '🔁' : '⌚'}
                 <div className="mt-0.5">{s}</div>
               </button>
             ))}

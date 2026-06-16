@@ -38,6 +38,7 @@ export function DigitalClock({
   if (style === 'analog') return <AnalogClock color={c} now={now} size={size} />;
   if (style === 'retro') return <RetroClock color={c} now={now} size={size} />;
   if (style === 'flip') return <FlipClock color={c} now={now} theme={theme} size={size} soundEnabled={soundEnabled} />;
+  if (style === 'casio') return <CasioClock color={c} now={now} size={size} />;
 
   const hh = String(now.getHours()).padStart(2, '0');
   const mm = String(now.getMinutes()).padStart(2, '0');
@@ -227,6 +228,267 @@ function RetroClock({
       </div>
     </div>
   );
+}
+
+// --------------------------------------------------------------------------
+// Casio F-91W-style LCD clock
+// Black resin case, faint green LCD (positive display, not negative).
+// Module 593 layout: weekday + date on top, big time digits in the
+// middle, AM/PM + seconds + mode label at the bottom. We render the
+// mode label as "WATER RESIST" (the front-of-case marking) to give
+// the iconic feel.
+//
+// Reference: https://en.wikipedia.org/wiki/Casio_F-91W
+//   "faint green LED" backlight, top row day+date, center time,
+//   bottom row PM/24H + seconds, alarm "bar of vertical lines" indicator.
+// --------------------------------------------------------------------------
+
+function CasioClock({
+  color,
+  now,
+  size: sizeProp = 'md',
+}: {
+  color: ClockColor;
+  now: Date;
+  size?: ClockSize;
+}) {
+  const scale = getSizeScale(sizeProp);
+  // Real F-91W is ~37mm wide. We use 240x96 viewbox at scale=1, which
+  // matches the aspect ratio of the real face (~37:15 mm).
+  const W = 240 * scale;
+  const H = 96 * scale;
+  const radius = 6 * scale;
+  const padding = 6 * scale;
+  // LCD area inside the case
+  const lcdInset = 8 * scale;
+  const lcdW = W - lcdInset * 2;
+  const lcdH = H - lcdInset * 2;
+
+  // Time strings
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  const isPM = now.getHours() >= 12;
+
+  // Date strings
+  const dayShort = now.toLocaleDateString(undefined, { weekday: 'short' }).toUpperCase();
+  const dateNum = String(now.getDate()).padStart(2, '0');
+
+  // LCD colors: faint green-cyan positive display on dark background.
+  // We use a teal-grey digit color on a tinted black LCD panel.
+  // The actual digit/label colors come from `tint` below, which is
+  // driven by the user's chosen clock color.
+  // Allow the user to tint the LCD color (via the clockColor picker).
+  // 'ink' / 'white' / 'cyan' / etc. map to a green-tinted analog.
+  const tint = useCasioTint(color);
+
+  return (
+    <div
+      style={{
+        width: W,
+        height: H,
+        background: `linear-gradient(180deg, #1a1a1a 0%, ${caseBg} 50%, #050505 100%)`,
+        borderRadius: radius,
+        position: 'relative',
+        boxShadow: `0 ${4 * scale}px ${12 * scale}px rgba(0,0,0,0.6), inset 0 ${1 * scale}px 0 rgba(255,255,255,0.08), inset 0 -${1 * scale}px 0 rgba(0,0,0,0.5)`,
+        padding,
+        fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+      }}
+    >
+      {/* "CASIO" branding on the case (top-left of LCD area) */}
+      <div
+        style={{
+          position: 'absolute',
+          top: padding + 2 * scale,
+          left: padding + 4 * scale,
+          fontSize: 7 * scale,
+          fontWeight: 800,
+          letterSpacing: `${1 * scale}px`,
+          color: '#9a9a9a',
+          fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+        }}
+      >
+        CASIO
+      </div>
+      <div
+        style={{
+          position: 'absolute',
+          top: padding + 2 * scale,
+          right: padding + 4 * scale,
+          fontSize: 5 * scale,
+          color: '#6a6a6a',
+          fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+        }}
+      >
+        WATER RESIST
+      </div>
+
+      {/* LCD panel */}
+      <div
+        style={{
+          position: 'relative',
+          width: lcdW,
+          height: lcdH,
+          margin: `${10 * scale}px 0 0 0`,
+          background: lcdBg,
+          borderRadius: 2 * scale,
+          boxShadow: `inset 0 0 ${4 * scale}px rgba(0,0,0,0.8), inset 0 0 ${10 * scale}px ${lcdGlow}`,
+          overflow: 'hidden',
+          // Faint pixel grid texture to evoke the LCD dot matrix
+          backgroundImage: `repeating-linear-gradient(0deg, transparent 0, transparent ${2 * scale}px, rgba(120, 200, 130, 0.02) ${2 * scale}px, rgba(120, 200, 130, 0.02) ${3 * scale}px)`,
+        }}
+      >
+        {/* Top row: weekday + date */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 2 * scale,
+            left: 4 * scale,
+            right: 4 * scale,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: 7 * scale,
+            lineHeight: 1,
+            color: tint.label,
+            fontWeight: 600,
+            letterSpacing: `${0.5 * scale}px`,
+          }}
+        >
+          <span>{dayShort}</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{dateNum}</span>
+        </div>
+
+        {/* Center: large time HH:MM */}
+        <div
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: 0,
+            right: 0,
+            transform: 'translateY(-50%)',
+            display: 'flex',
+            alignItems: 'baseline',
+            justifyContent: 'center',
+            gap: 2 * scale,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 32 * scale,
+              lineHeight: 1,
+              color: tint.digit,
+              fontWeight: 700,
+              fontVariantNumeric: 'tabular-nums',
+              textShadow: `0 0 ${4 * scale}px ${tint.glow}`,
+              letterSpacing: `${1 * scale}px`,
+            }}
+          >
+            {hh}
+            <span style={{ opacity: 0.4 }}>:</span>
+            {mm}
+          </span>
+        </div>
+
+        {/* Bottom row: AM/PM + seconds + alarm/chime indicators */}
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 2 * scale,
+            left: 4 * scale,
+            right: 4 * scale,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: 7 * scale,
+            lineHeight: 1,
+            color: tint.label,
+            fontWeight: 600,
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {/* AM/PM indicator — typical LCD shows the active one, dims the other */}
+          <span style={{ display: 'flex', gap: 4 * scale }}>
+            <span
+              style={{
+                opacity: isPM ? 0.35 : 1,
+                color: isPM ? tint.label : tint.digit,
+                textShadow: isPM ? 'none' : `0 0 ${3 * scale}px ${tint.glow}`,
+              }}
+            >
+              AM
+            </span>
+            <span
+              style={{
+                opacity: isPM ? 1 : 0.35,
+                color: isPM ? tint.digit : tint.label,
+                textShadow: isPM ? `0 0 ${3 * scale}px ${tint.glow}` : 'none',
+              }}
+            >
+              PM
+            </span>
+          </span>
+
+          {/* Seconds */}
+          <span style={{ color: tint.digit, textShadow: `0 0 ${3 * scale}px ${tint.glow}` }}>
+            {ss}
+          </span>
+
+          {/* Alarm/chime indicators — small dots/bars for alarm (vertical lines)
+              and bell for hourly chime. Show them active to feel "armed". */}
+          <span style={{ display: 'flex', gap: 3 * scale, alignItems: 'center' }}>
+            {/* Alarm: bar of vertical lines (4 short lines) */}
+            <span
+              style={{
+                display: 'inline-flex',
+                gap: 0.5 * scale,
+                color: tint.digit,
+                textShadow: `0 0 ${2 * scale}px ${tint.glow}`,
+              }}
+              aria-label="Alarm on"
+            >
+              <span style={{ borderLeft: `1px solid currentColor`, width: 1, height: 6 * scale }} />
+              <span style={{ borderLeft: `1px solid currentColor`, width: 1, height: 6 * scale }} />
+              <span style={{ borderLeft: `1px solid currentColor`, width: 1, height: 6 * scale }} />
+              <span style={{ borderLeft: `1px solid currentColor`, width: 1, height: 6 * scale }} />
+            </span>
+            {/* Hourly chime: bell shape (use 🔔-like glyph) */}
+            <span
+              style={{ color: tint.digit, textShadow: `0 0 ${2 * scale}px ${tint.glow}` }}
+              aria-label="Hourly chime on"
+            >
+              ♪
+            </span>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Tint the LCD digits/labels based on the user's chosen clock color.
+// The default is the iconic F-91W green; neon picks map to a tinted
+// version of that color (not full saturation, since real LCDs are
+// muted).
+function useCasioTint(color: ClockColor) {
+  switch (color) {
+    case 'white':
+      return { digit: '#a8b0a0', label: '#5a6058', glow: 'rgba(180, 200, 170, 0.6)' };
+    case 'ink':
+      return { digit: '#3a4a3e', label: '#2a3a2e', glow: 'rgba(80, 100, 80, 0.3)' };
+    case 'amber':
+      return { digit: '#b88a3a', label: '#5a4520', glow: 'rgba(200, 150, 60, 0.6)' };
+    case 'green':
+      return { digit: '#6ac270', label: '#3a6040', glow: 'rgba(120, 220, 130, 0.7)' };
+    case 'cyan':
+      return { digit: '#5ab8b8', label: '#2a5050', glow: 'rgba(100, 200, 200, 0.6)' };
+    case 'red':
+      return { digit: '#b84a4a', label: '#5a2828', glow: 'rgba(200, 90, 90, 0.6)' };
+    case 'pink':
+      return { digit: '#b85a90', label: '#5a2840', glow: 'rgba(200, 120, 160, 0.6)' };
+    default:
+      return { digit: '#5f9c6a', label: '#3a5a42', glow: 'rgba(120, 200, 130, 0.6)' };
+  }
 }
 
 // --------------------------------------------------------------------------
