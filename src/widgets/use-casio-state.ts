@@ -21,6 +21,41 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+// --------------------------------------------------------------------------
+// F-91W "bip" sound — the reference uses /sound/bip.mp3 from the original
+// demo. We load it once and reuse the Audio instance. Mute state is
+// exposed so the parent can wire it to a UI toggle.
+// --------------------------------------------------------------------------
+
+let _bipAudio: HTMLAudioElement | null = null;
+function getBip(): HTMLAudioElement | null {
+  if (typeof window === 'undefined') return null;
+  if (!_bipAudio) {
+    _bipAudio = new Audio('/sound/casio-bip.mp3');
+    _bipAudio.preload = 'auto';
+  }
+  return _bipAudio;
+}
+let _bipMuted = false;
+export function setCasioBipMuted(muted: boolean) {
+  _bipMuted = muted;
+  if (_bipAudio) _bipAudio.muted = muted;
+}
+export function isCasioBipMuted(): boolean {
+  return _bipMuted;
+}
+function playBip() {
+  if (_bipMuted) return;
+  const a = getBip();
+  if (!a) return;
+  try {
+    a.currentTime = 0;
+    void a.play();
+  } catch {
+    // Autoplay policy: the user hasn't interacted yet. Ignore.
+  }
+}
+
 export type CasioMenu = 'dateTime' | 'dailyAlarm' | 'stopwatch' | 'setDateTime';
 export type CasioAction =
   | 'default'
@@ -50,6 +85,10 @@ export type CasioFlags = {
 export type CasioHandle = {
   state: CasioState;
   flags: CasioFlags;
+  /** Current alarm time (user-editable). */
+  alarmTime: Date;
+  /** ms offset added to `new Date()` to compute the watch's wall time. */
+  dateTimeOffset: number;
   pressL: () => void;
   pressC: () => void;
   pressA: () => void;
@@ -88,6 +127,26 @@ export function useCasioState(): CasioHandle {
   // on the mode display. We start a 3s timer on a-down, cancel on a-up.
   const caTimer = useRef<number | null>(null);
 
+  // Auto-repeat for held A on edit-* actions: 1s delay, then increment
+  // every 100ms. The increment function is set by pressA (latest closure)
+  // and invoked by the interval via a ref so we always read fresh state.
+  const autoRepeatTimeoutRef = useRef<number | null>(null);
+  const autoRepeatIntervalRef = useRef<number | null>(null);
+  const autoRepeatTickRef = useRef<(() => void) | null>(null);
+
+  // Date/time offset for setDateTime. The reference lets the user adjust
+  // the wall clock; we track an offset in ms that, added to `new Date()`,
+  // gives the user's chosen "watch time". Initially 0.
+  const [dateTimeOffset, setDateTimeOffset] = useState(0);
+  const [alarmTime, setAlarmTime] = useState(() => {
+    const d = new Date();
+    d.setHours(7);
+    d.setMinutes(0);
+    d.setSeconds(0);
+    d.setMilliseconds(0);
+    return d;
+  });
+
   // Stopwatch driver — every 31ms (≈32fps) tick the stopwatch forward.
   // We subscribe to a state flag (`stopwatchRunning`) and toggle it from
   // the press/release handlers so the effect can re-run on state change.
@@ -107,6 +166,61 @@ export function useCasioState(): CasioHandle {
     return () => window.clearInterval(id);
   }, [stopwatchRunning]);
 
+  // Use a ref so the auto-repeat closure can read the latest state
+  // without us having to put `state` in the deps array (which would
+  // re-create the callbacks every state change, breaking the auto-repeat
+  // interval's ref identity).
+  const stateRef = useRef(state);
+  const flagsRef = useRef(flags);
+  useEffect(() => {
+    stateRef.current = state;
+    flagsRef.current = flags;
+  }, [state, flags]);
+
+  useEffect(() => {
+    // Define the increment fn for the currently-pressed edit action.
+    // The reference does this inline; we wrap it in a ref callback that
+    // gets set on every pressA so the interval always sees fresh state.
+    autoRepeatTickRef.current = () => {
+      const s = stateRef.current;
+      const f = flagsRef.current;
+      if (s.menu === 'dailyAlarm') {
+        if (s.action === 'edit-hours') {
+          setAlarmTime((d) => {
+            const nd = new Date(d);
+            nd.setHours(nd.getHours() + 1);
+            return nd;
+          });
+        } else if (s.action === 'edit-minutes') {
+          setAlarmTime((d) => {
+            const nd = new Date(d);
+            nd.setMinutes(nd.getMinutes() + 1);
+            return nd;
+          });
+        }
+      } else if (s.menu === 'setDateTime') {
+        if (s.action === 'edit-minutes') {
+          setDateTimeOffset((o) => o - 60_000);
+        } else if (s.action === 'edit-hours') {
+          setDateTimeOffset((o) => o - 3_600_000);
+        } else if (s.action === 'edit-month') {
+          setDateTimeOffset((o) => {
+            const d = new Date(Date.now() + o);
+            d.setMonth(d.getMonth() + 1);
+            return o - (d.getTime() - (Date.now() + o));
+          });
+        } else if (s.action === 'edit-day-number') {
+          setDateTimeOffset((o) => {
+            const d = new Date(Date.now() + o);
+            d.setDate(d.getDate() + 1);
+            return o - (d.getTime() - (Date.now() + o));
+          });
+        }
+      }
+      void f;
+    };
+  });
+
   const pressL = useCallback(() => {
     // L is "mode/modify" — moves into edit state from default, or
     // advances to the next edit field. Reference transitions:
@@ -117,18 +231,22 @@ export function useCasioState(): CasioHandle {
     //   setDateTime: L on default → edit-hours; on edit-hours → edit-minutes;
     //                 on edit-minutes → edit-month; on edit-month → edit-day-number;
     //                 on edit-day-number → edit-day-letter; on edit-day-letter → default.
+    let played = false;
     setState((s) => {
       if (s.menu === 'dailyAlarm') {
+        played = true;
         if (s.action === 'default') return { menu: 'dailyAlarm', action: 'edit-hours' };
         if (s.action === 'edit-hours') return { menu: 'dailyAlarm', action: 'edit-minutes' };
         if (s.action === 'edit-minutes') return { menu: 'dailyAlarm', action: 'modified' };
         if (s.action === 'modified') return { menu: 'dailyAlarm', action: 'edit-hours' };
       }
       if (s.menu === 'stopwatch') {
+        played = true;
         if (s.action === 'default') return { menu: 'stopwatch', action: 'modified' };
         if (s.action === 'modified') return { menu: 'stopwatch', action: 'default' };
       }
       if (s.menu === 'setDateTime') {
+        played = true;
         const cycle: Record<CasioAction, CasioAction> = {
           default: 'edit-hours',
           'edit-hours': 'edit-minutes',
@@ -143,6 +261,7 @@ export function useCasioState(): CasioHandle {
       }
       return s;
     });
+    if (played) playBip();
   }, []);
 
   const pressC = useCallback(() => {
@@ -163,16 +282,19 @@ export function useCasioState(): CasioHandle {
       }
       return { menu: next[s.menu], action: 'default' };
     });
+    playBip();
   }, []);
 
   const pressA = useCallback(() => {
-    // A is "start/stop" or "increment". On dateTime/default, holding A
-    // for 3s reveals the CA510 easter egg (mode display shows "CA510").
-    // On dateTime, A is also a tap that toggles 12/24h mode.
+    // A is the most complex button. From the reference (os.js):
+    //   dateTime:  isDown starts 3s CA510 timer; release toggles 12/24h.
+    //   dailyAlarm: default → cycle alarmOn/timeSignal flags; edit-* →
+    //                increment hours/minutes (held = auto-repeat at 100ms).
+    //   stopwatch: toggle run, with bip.
+    //   setDateTime: default → +1 second; edit-* → increment that field
+    //                (held = auto-repeat at 100ms after 1s).
     setState((s) => {
       if (s.menu === 'dateTime' && s.action === 'default') {
-        // Start the 3s CA510 timer. On release before 3s, just toggle
-        // time mode (12 ↔ 24h).
         if (caTimer.current !== null) window.clearTimeout(caTimer.current);
         caTimer.current = window.setTimeout(() => {
           setState((cur) =>
@@ -185,13 +307,57 @@ export function useCasioState(): CasioHandle {
       }
       return s;
     });
-  }, []);
+
+    // Below: synchronous side-effects (bip, flag toggles, increment
+    // kicks) based on the current menu/action.
+    setFlags((f) => {
+      if (!state) return f;
+      if (state.menu !== 'dailyAlarm' || state.action !== 'default') return f;
+      // Cycle the alarmOn + timeSignal pair in this order:
+      //   both on → only signal on → only alarm on → both on
+      // (the reference toggles the off one ON, not strictly cycle; this
+      // is a simplification that matches the demo's behaviour for the
+      // 3 typical states.)
+      if (f.alarmOn && f.hourlyChime) return { ...f, alarmOn: false, hourlyChime: true };
+      if (!f.alarmOn && f.hourlyChime) return { ...f, alarmOn: true, hourlyChime: true };
+      return { ...f, alarmOn: true, hourlyChime: false };
+    });
+
+    playBip();
+
+    // Start an auto-repeat timer for edit-* actions. After 1s, start
+    // incrementing every 100ms.
+    if (state && state.action.startsWith('edit-')) {
+      const id = setTimeout(() => {
+        const intervalId = setInterval(() => {
+          // Re-read latest state and increment the field.
+          // (We mutate the watched value via a ref; see autoRepeatTick.)
+          autoRepeatTickRef.current?.();
+        }, 100);
+        autoRepeatIntervalRef.current = intervalId;
+      }, 1000);
+      autoRepeatTimeoutRef.current = id;
+    }
+  }, [state]);
 
   const releaseA = useCallback(() => {
-    // On a-up before 3s → toggle 12/24h mode (and cancel the CA510 timer).
+    // On a-up:
+    //   dateTime/default + <3s: toggle 12/24h
+    //   dateTime/casio: back to default
+    //   dailyAlarm/edit-*: stop auto-repeat
+    //   stopwatch/default: toggle run
+    //   stopwatch/modified: back to default (release split)
     if (caTimer.current !== null) {
       window.clearTimeout(caTimer.current);
       caTimer.current = null;
+    }
+    if (autoRepeatTimeoutRef.current !== null) {
+      window.clearTimeout(autoRepeatTimeoutRef.current);
+      autoRepeatTimeoutRef.current = null;
+    }
+    if (autoRepeatIntervalRef.current !== null) {
+      window.clearInterval(autoRepeatIntervalRef.current);
+      autoRepeatIntervalRef.current = null;
     }
     setState((s) => {
       if (s.menu === 'dateTime' && s.action === 'default') {
@@ -201,7 +367,6 @@ export function useCasioState(): CasioHandle {
       if (s.menu === 'dateTime' && s.action === 'casio') {
         return { menu: 'dateTime', action: 'default' };
       }
-      // Stopwatch: toggle run.
       if (s.menu === 'stopwatch') {
         if (s.action === 'default') {
           setStopwatchRunning((r) => !r);
@@ -212,7 +377,6 @@ export function useCasioState(): CasioHandle {
           return s;
         }
         if (s.action === 'modified') {
-          // Release the split — restore running display.
           stopwatchSplit.current = null;
           return { menu: 'stopwatch', action: 'default' };
         }
@@ -240,6 +404,8 @@ export function useCasioState(): CasioHandle {
   return {
     state,
     flags,
+    alarmTime,
+    dateTimeOffset,
     pressL,
     pressC,
     pressA,

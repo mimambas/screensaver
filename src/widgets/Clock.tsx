@@ -463,20 +463,23 @@ function computeCasioVisibility(
   chars: Record<string, string>;
   flags: Record<string, boolean>;
 } {
-  const { state, flags, stopwatchMs } = casio;
-  const hours = now.getHours();
-  const minutes = now.getMinutes();
-  const seconds = now.getSeconds();
+  const { state, flags, stopwatchMs, alarmTime, dateTimeOffset } = casio;
+  // The watch's effective time. In setDateTime the user has adjusted
+  // the wall clock; in other menus the watch shows the real time.
+  const effectiveNow = new Date(now.getTime() + dateTimeOffset);
+  const hours = effectiveNow.getHours();
+  const minutes = effectiveNow.getMinutes();
+  const seconds = effectiveNow.getSeconds();
   const displayHours = flags.timeMode12
     ? hours > 12
       ? hours - 12
       : hours
     : hours;
-  const dayLetters = now
+  const dayLetters = effectiveNow
     .toLocaleDateString('en-US', { weekday: 'long' })
     .slice(0, 2)
     .toUpperCase();
-  const dayNum = now.getDate();
+  const dayNum = effectiveNow.getDate();
   const pad2 = (n: number) => String(n).padStart(2, '0');
 
   // Common per-frame values
@@ -526,10 +529,11 @@ function computeCasioVisibility(
   }
 
   if (state.menu === 'dailyAlarm') {
-    // Alarm screen. Show alarm time (HH MM) and "AL" mode label.
-    const alarmH = displayHours;
-    const alarmM = minutes; // Reference uses the same minutes as time
-    const aH1 = alarmH >= 10 ? String(Math.floor(alarmH / 10)) : ' ';
+    // Alarm screen. Show the alarm time (HH MM) and "AL" mode label.
+    // Reference uses 24h for alarm display even when time is 12h.
+    const alarmH = alarmTime.getHours();
+    const alarmM = alarmTime.getMinutes();
+    const aH1 = alarmH >= 10 ? String(Math.floor(alarmH / 10)) : '0';
     const aH2 = String(alarmH % 10);
     return {
       chars: {
