@@ -230,386 +230,269 @@ function RetroClock({
 }
 
 // --------------------------------------------------------------------------
-// Flip clock — verbatim port of FlipDown.js (v0.2.2)
+// Flip clock — ported from sLeeNguyen/react-flip-clock-countdown
+// (https://github.com/sLeeNguyen/react-flip-clock-countdown)
 //
-// Reference CSS (5 rules per rotor, all positioning/colors verbatim):
+// 4-layer model (simpler than FlipDown's 5-layer, visually identical
+// "falling flap" effect):
 //
-//   .rotor {                                  ← 50×80, perspective 200, 4px radius
-//     perspective: 200px;
-//     position: relative;
-//     width: 50px; height: 80px;
-//     border-radius: 4px;
-//     font-size: 4rem;
-//     text-align: center;
-//   }
-//   .rotor-top, .rotor-bottom {               ← static, 50×40 each
-//     position: absolute; overflow: hidden;
-//     width: 50px; height: 40px;
-//   }
-//   .rotor-top      { line-height: 80px; border-radius: 4px 4px 0 0; }
-//   .rotor-bottom   { bottom: 0; line-height: 0; border-radius: 0 0 4px 4px; }
-//   .rotor-leaf {                              ← animates rotateX
-//     z-index: 1; position: absolute;
-//     width: 50px; height: 80px;
-//     transform-style: preserve-3d;
-//     transition: transform 0s;                ← idle: no transition
-//   }
-//   .rotor-leaf.flipped {
-//     transform: rotateX(-180deg);
-//     transition: all 0.5s ease-in-out;       ← flipped: animate
-//   }
-//   .rotor-leaf-front, .rotor-leaf-rear {
-//     position: absolute; overflow: hidden;
-//     width: 50px; height: 40px; margin: 0;
-//     transform: rotateX(0deg);
-//     backface-visibility: hidden;
-//   }
-//   .rotor-leaf-front {
-//     line-height: 80px;                       ← digit centered on its
-//     border-radius: 4px 4px 0 0;                own figure (which is 40px
-//   }                                            tall; line-height: 80px
-//   .rotor-leaf-rear {                          pushes digit to top)
-//     line-height: 0;
-//     border-radius: 0 0 4px 4px;
-//     transform: rotateX(-180deg);            ← pre-rotated
-//   }
-//   .rotor:after {                            ← hinge: 1px line, 40px tall,
-//     content: ''; z-index: 2; position: absolute;     drawn over the bottom
-//     bottom: 0; left: 0;                       half (so the seam reads as
-//     width: 50px; height: 40px;                 the split between halves)
-//     border-radius: 0 0 4px 4px;
-//   }
-//   .flipdown__theme-dark:
-//     .rotor-top, .rotor-leaf-front: #FFFFFF / #151515
-//     .rotor-bottom, .rotor-leaf-rear: #EFEFEF / #202020
-//     .rotor:after border-top: 1px solid #151515
-//   .flipdown__theme-light:
-//     .rotor-top, .rotor-leaf-front: #222 / #DDD
-//     .rotor-bottom, .rotor-leaf-rear: #333 / #EEE
-//     .rotor:after border-top: 1px solid #222
+//   1. fcc__next_above    — static, top half, shows NEXT digit
+//                           (visible only during the flip, when the
+//                            card is rotated past 90deg and the
+//                            back face is showing)
+//   2. fcc__current_below — static, bottom half, shows CURRENT digit
+//                           (visible at rest; the "still" half)
+//   3. fcc__card          — the animated flap, 50% height (top half),
+//                           transform-origin: bottom, rotates 0 → -180deg
+//   4. fcc__card_face_front (child of card) — top half, shows CURRENT
+//                           at rest, hidden after flip
+//      fcc__card_face_back  (child of card) — top half, pre-rotated
+//                           -180deg, shows NEXT after flip
 //
-// Reference JS (verbatim behavior):
-//   1. prevClockValues → rotorLeafFront + rotorBottom (visible faces)
-//   2. setTimeout 500ms → rotorTop text → NEW digit (back of falling flap)
-//   3. setTimeout 500ms → rotorLeafRear text → NEW digit + add `.flipped`
-//      class to rotorLeaf. After 500ms, remove `.flipped`.
-//   4. After both timeouts: prevClockValues ← new values.
+// CSS rules (from styles.module.css):
+//   .digit_block { perspective: 200px; ... }
+//   .next_above  { position: absolute; top: 0; height: 50%;
+//                   border-bottom: 1px solid divider; }
+//   .current_below { position: absolute; bottom: 0; height: 50%; }
+//   .card { position: relative; z-index: 2; width: 100%; height: 50%;
+//           transform-style: preserve-3d; transform-origin: bottom;
+//           transform: rotateX(0); border-radius: inherit; }
+//   .card.flipped { transition: transform 0.7s ease-in-out;
+//                   transform: rotateX(-180deg); }
+//   .card_face { position: absolute; width: 100%; height: 100%;
+//                display: flex; justify-content: center; overflow: hidden;
+//                backface-visibility: hidden; }
+//   .card_face_front { align-items: flex-end;
+//                      border-top-radius: inherit;
+//                      border-bottom: 1px solid divider; }
+//   .card_face_back  { align-items: flex-start;
+//                      transform: rotateX(-180deg);
+//                      border-bottom-radius: inherit; }
 //
-// So the eye sees:
-//   - The visible faces show OLD digit throughout the flip.
-//   - At t=500ms, the falling top half (rotorTop) suddenly shows the
-//     NEW digit (its back side). The static front face of the falling
-//     flap (rotorLeafFront) still shows OLD digit while it rotates
-//     down — the user sees the OLD digit rotate down out of view.
-//   - At t=500ms, the .flipped class is added → the rotorLeaf rotates
-//     -180deg over 500ms. As it rotates, the rotorLeafRear (pre-rotated
-//     +180, so it now faces the viewer) reveals the NEW digit's bottom.
-//   - At t=1000ms, the .flipped class is removed → instant reset to 0deg
-//     (transition: transform 0s in idle state). The leaf re-covers the
-//     static faces, showing OLD digit's top (rotorLeafFront) and OLD
-//     digit's bottom (which is now stale but covered).
-//   - The next tick of the tick interval updates prevClockValues and the
-//     cycle restarts.
-//
-// We reproduce this exactly: 5 layers, 2 setTimeouts, text-content
-// swaps at the 500ms mark, flip class added then auto-removed at 500ms.
+// Timing (from FlipClockDigit.tsx):
+//   - On prop change: if current !== prop.current, setFlipped(true)
+//   - On transitionend: setState({ current: prop.current }), setFlipped(false)
 // --------------------------------------------------------------------------
 
 function FlipDigit({
   ch,
   scale,
   cardBg,
-  flapBg,
-  digitColorTop,
-  digitColorBottom,
-  edgeColor,
+  digitColor,
+  dividerColor,
   soundEnabled,
 }: {
   ch: string;
   scale: number;
   cardBg: string;
-  flapBg: string;
-  digitColorTop: string;
-  digitColorBottom: string;
-  edgeColor: string;
+  digitColor: string;
+  dividerColor: string;
   soundEnabled: boolean;
 }) {
-  // 5:8 aspect ratio (50x80 at scale=1) — matches .rotor exactly.
-  const W = 50 * scale;
+  const W = 46 * scale;
   const H = 80 * scale;
   const halfH = H / 2;
   const radius = 4 * scale;
-  // Reference uses font-size: 4rem (≈64px) on .rotor. Both top and
-  // bottom figures use line-height: 80px (= full rotor height) to
-  // center the digit vertically within the figure. The figure is 40px
-  // tall but overflows; the line-height: 80px pushes the baseline to
-  // the middle, and the parent flexbox-like alignment comes from the
-  // line-height itself, not from CSS flex/grid.
-  const fontSize = 64 * scale;
-  const lineHeight = 80 * scale;
-  const fontFamily = 'sans-serif';
+  const fontSize = 50 * scale;
+  const flipDuration = 700; // matches --fcc-flip-duration: 0.7s
 
-  // Per-face text content — mirrors the reference's per-element
-  // textContent assignments in _updateClockValues:
-  //   - rotorLeafFront  = prev value  (visible at rest, top half)
-  //   - rotorBottom     = prev value  (visible at rest, bottom half)
-  //   - rotorTop        = next value  (set at t=500, back of falling flap)
-  //   - rotorLeafRear   = next value  (set at t=500, revealed by flip)
-  //
-  // State machine:
-  //   idle  → all faces show `prev` (rotorLeafFront + rotorBottom + rotorTop)
-  //   rotorTop + rotorLeafRear also show `prev` until t=500, then jump to `next`
-  //   on tick: t=0   prev → current state, copy `current` to prev-only faces
-  //            t=500  flip starts; rotorTop + rotorLeafRear show `next`
-  //            t=1000 flip done; remove .flipped class (instant reset to 0deg)
-  //                   then on next render: rotorLeafFront + rotorBottom switch to `next`
-  //
-  // We simplify by storing `prev` and `next` as state; the render maps
-  // them onto the four faces per the reference.
-
-  const [prev, setPrev] = useState(ch);
+  const [current, setCurrent] = useState(ch);
   const [next, setNext] = useState(ch);
-  // True while the .flipped class is on the leaf (rotateX -180deg,
-  // 500ms transition). Reset to false at t=1000 to drop the class.
   const [flipped, setFlipped] = useState(false);
 
   useEffect(() => {
-    if (ch === prev) return;
-    // 1. Immediately set `next` — this updates rotorTop + rotorLeafRear
-    //    text in the same render. (Reference does this at t=500 via
-    //    setTimeout, but it has the same net effect on the next frame
-    //    after class change because rotorTop is hidden behind the leaf
-    //    front until the flip is mid-way. We do it on the same rAF as
-    //    setFlipped so React batches them — visually identical.)
-    // 2. Add .flipped class — 500ms ease-in-out rotation starts.
-    // 3. After 500ms: remove .flipped (instant reset) and update `prev`
-    //    so the next render shows the new digit on the visible faces.
+    if (ch === current) return;
+    // Set the "next" digit that will appear on the back face. The
+    // front face still shows `current` so the falling flap animates
+    // the OLD digit down. On transitionend we commit `ch` as the new
+    // `current` and reset flipped to false.
+    // We schedule these via queueMicrotask to avoid the React 19
+    // set-state-in-effect warning — the effect still drives the flip
+    // but defers the actual state writes to the next microtask.
     queueMicrotask(() => {
       setNext(ch);
       requestAnimationFrame(() => {
         setFlipped(true);
-        const reset = window.setTimeout(() => {
-          setFlipped(false);
-          setPrev(ch);
-          if (soundEnabled) playClack();
-        }, 500);
-        void reset;
       });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ch, soundEnabled]);
 
-  // The leaf transition string mirrors the reference's CSS:
-  //   idle:    transition: transform 0s
-  //   flipped: transition: all 0.5s ease-in-out
-  // We emit the right one based on state.
-  const leafTransition = flipped ? 'all 500ms ease-in-out' : 'transform 0s';
-
-  // Figure positioning: top face = upper half of rotor, bottom face =
-  // lower half. Reference uses line-height: 80px on both leaf-front
-  // and rotor-top, line-height: 0 on the bottom faces. We use
-  // flexbox with `items-end` for top and `items-start` for bottom, and
-  // set the line-height of the inner span to the full rotor height so
-  // the digit sits in the visual center of its half. This matches
-  // the reference's intent (line-height: 80px in a 40px-tall figure
-  // centers the baseline at the figure's middle).
-  const figureTopStyle = {
-    position: 'absolute' as const,
-    inset: 0,
-    height: halfH,
-    backgroundColor: flapBg,
-    borderRadius: `${radius}px ${radius}px 0 0`,
-    lineHeight: 0, // container; span uses lineHeight=80
-    overflow: 'hidden',
+  // sLeeNguyen uses onTransitionEnd to commit the new current digit
+  // and reset flipped. We do the same so the timing is exact (the
+  // 700ms in the CSS, not 700ms +/- React render jitter).
+  const handleTransitionEnd = () => {
+    if (!flipped) return;
+    setCurrent(ch);
+    setFlipped(false);
+    if (soundEnabled) playClack();
   };
-  const figureBottomStyle = {
-    position: 'absolute' as const,
-    inset: 0,
-    top: halfH,
-    height: halfH,
-    backgroundColor: cardBg,
-    borderRadius: `0 0 ${radius}px ${radius}px`,
-    lineHeight: 0,
-    overflow: 'hidden',
-  };
-
-  // Digit alignment per reference:
-  //   .rotor-leaf-front, .rotor-top:  line-height: 80px → digit bottom-aligned
-  //   .rotor-leaf-rear, .rotor-bottom: line-height: 0   → digit top-aligned
-  // We implement that with flex + line-height on the inner span.
-  const digitTop = (digit: string, color: string) => (
-    <span
-      style={{
-        color,
-        fontSize,
-        fontWeight: 700,
-        fontFamily,
-        lineHeight,
-        display: 'block',
-        textAlign: 'center',
-      }}
-    >
-      {digit}
-    </span>
-  );
-  const digitBottom = (digit: string, color: string) => (
-    <span
-      style={{
-        color,
-        fontSize,
-        fontWeight: 700,
-        fontFamily,
-        lineHeight,
-        display: 'block',
-        textAlign: 'center',
-        // Push the digit down so it appears in the bottom half.
-        // Reference uses line-height: 0 on the figure, which means
-        // the figure is 40px tall with a single-line baseline at 0;
-        // the text overflows above. In React, the cleanest match is
-        // to position the span with transform.
-        transform: 'translateY(-100%)',
-      }}
-    >
-      {digit}
-    </span>
-  );
 
   return (
     <div
-      className="rotor"
       style={{
+        perspective: 200,
         position: 'relative',
-        float: 'left',
         width: W,
         height: H,
-        marginRight: 5 * scale,
         borderRadius: radius,
+        backgroundColor: cardBg,
+        color: digitColor,
         fontSize,
-        textAlign: 'center',
-        perspective: 200,
-        backgroundColor: 'transparent',
+        fontWeight: 500,
+        lineHeight: 0,
+        boxShadow: '0 0 2px 1px rgba(0,0,0,0.1)',
       }}
     >
-      {/* The leaf — animates rotateX(0) ↔ rotateX(-180deg). z-index: 1
-          so it sits on top of the static rotor-top and rotor-bottom.
-          Children order matters: rotorLeafRear first (drawn behind),
-          then rotorLeafFront (drawn in front). At rest with leaf at
-          rotateX(0), rotorLeafFront faces the viewer (front) and
-          rotorLeafRear is behind it (backface-hidden). After flip
-          (-180deg), rotorLeafFront is now facing away (backface-hidden)
-          and rotorLeafRear (pre-rotated -180) now faces the viewer. */}
+      {/* Static "next above" — top half. Shows the NEXT digit, but is
+          only visible when the card has rotated past ~90deg (i.e.
+          during the second half of the flip). At rest it's covered
+          by the card face front. */}
       <div
-        className="rotor-leaf"
         style={{
           position: 'absolute',
-          zIndex: 1,
-          width: W,
-          height: H,
-          transformStyle: 'preserve-3d',
-          transform: flipped ? 'rotateX(-180deg)' : 'rotateX(0deg)',
-          transition: leafTransition,
+          top: 0,
+          left: 0,
+          right: 0,
+          height: halfH,
+          overflow: 'hidden',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'flex-end',
+          backgroundColor: cardBg,
+          color: digitColor,
+          borderTopLeftRadius: radius,
+          borderTopRightRadius: radius,
+          borderBottom: `1px solid ${dividerColor}`,
         }}
       >
-        {/* rotor-leaf-rear: pre-rotated 180deg, shows next digit's bottom */}
-        <div
-          className="rotor-leaf-rear"
-          style={{
-            ...figureBottomStyle,
-            backfaceVisibility: 'hidden',
-            WebkitBackfaceVisibility: 'hidden',
-            transform: 'rotateX(-180deg)',
-          }}
-        >
-          {digitBottom(next, digitColorBottom)}
-        </div>
-
-        {/* rotor-leaf-front: top half of leaf, shows next digit's top */}
-        <div
-          className="rotor-leaf-front"
-          style={{
-            ...figureTopStyle,
-            backfaceVisibility: 'hidden',
-            WebkitBackfaceVisibility: 'hidden',
-            // Reference has no transform on .rotor-leaf-front (transform:
-            // rotateX(0deg) is the default). Default is identity.
-          }}
-        >
-          {digitTop(next, digitColorTop)}
-        </div>
+        <span style={{ lineHeight: 1, transform: 'translateY(50%)' }}>{next}</span>
       </div>
 
-      {/* rotor-top: static, top half. Shows PREV digit (mirrors
-          reference's prevClockValuesAsString). This is the "back" of
-          the falling flap — when the leaf rotates down, the back of
-          rotorLeafFront swings into view from the top. rotorTop is
-          positioned behind the leaf (z-index 0) so it stays hidden
-          until the leaf completes its flip. At t=500 (the moment the
-          leaf is half-flipped), the rotorTop text is updated to the
-          new digit so that when the leaf has fully flipped, the new
-          digit's top is visible on the rotorTop face. We render
-          `next` on rotorTop instead of `prev` to match this: at idle
-          the leaf covers it (so user doesn't see it); after flip the
-          leaf is hidden by backface-visibility and rotorTop is
-          revealed with `next`. */}
+      {/* Static "current below" — bottom half. Shows CURRENT digit.
+          This is the "still" half that never moves; the eye reads
+          it as the lower portion of the card. */}
       <div
-        className="rotor-top"
         style={{
-          ...figureTopStyle,
-          color: digitColorTop,
-        }}
-      >
-        {digitTop(next, digitColorTop)}
-      </div>
-
-      {/* rotor-bottom: static, bottom half. Shows PREV digit. The
-          reference keeps this on the OLD digit for one frame longer
-          so the falling flap's back side briefly shows the new digit
-          while the bottom still shows the old — but since they're
-          stacked at the same z-plane and rotor-bottom has no z-index,
-          it's behind the leaf and not visible during the flip.
-          Visually, after the flip resolves, both rotorTop and
-          rotorBottom should show the new digit. We render `next` on
-          rotor-bottom too. */}
-      <div
-        className="rotor-bottom"
-        style={{
-          ...figureBottomStyle,
-          bottom: 0,
-          color: digitColorBottom,
-        }}
-      >
-        {digitBottom(next, digitColorBottom)}
-      </div>
-
-      {/* Hinge: .rotor:after in the reference is a 1px top border
-          drawn on a 50×40 box positioned at the bottom of the rotor
-          (bottom: 0). It effectively creates a 1px line across the
-          midpoint of the rotor (since the box is 40px tall and starts
-          at 40px from the top). We use the reference's exact technique:
-          a 1px line at top: halfH, with edgeColor for the color. */}
-      <div
-        className="rotor-after"
-        style={{
-          content: '""',
           position: 'absolute',
-          zIndex: 2,
           bottom: 0,
           left: 0,
-          width: W,
+          right: 0,
           height: halfH,
-          borderRadius: `0 0 ${radius}px ${radius}px`,
-          borderTop: `1px solid ${edgeColor}`,
-          pointerEvents: 'none',
+          overflow: 'hidden',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'flex-start',
+          backgroundColor: cardBg,
+          color: digitColor,
+          borderBottomLeftRadius: radius,
+          borderBottomRightRadius: radius,
         }}
-      />
+      >
+        <span style={{ lineHeight: 1, transform: 'translateY(-50%)' }}>{current}</span>
+      </div>
+
+      {/* The animated card — top half only, hinges from its bottom
+          edge. Rotates 0 → -180deg on .flipped, 700ms ease-in-out. */}
+      <div
+        onTransitionEnd={handleTransitionEnd}
+        style={{
+          position: 'relative',
+          zIndex: 2,
+          width: '100%',
+          height: halfH,
+          transformStyle: 'preserve-3d',
+          transformOrigin: 'bottom',
+          transform: flipped ? 'rotateX(-180deg)' : 'rotateX(0deg)',
+          transition: flipped ? `transform ${flipDuration}ms ease-in-out` : 'none',
+          borderRadius: radius,
+        }}
+      >
+        {/* Front face — top half of the card. Shows CURRENT digit.
+            align-items: flex-end positions the digit at the bottom
+            of this face (so it lines up with the static bottom half
+            when at rest). When the card rotates past 90deg, this
+            face is hidden by backface-visibility. */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'flex-end',
+            overflow: 'hidden',
+            backfaceVisibility: 'hidden',
+            WebkitBackfaceVisibility: 'hidden',
+            backgroundColor: cardBg,
+            color: digitColor,
+            borderTopLeftRadius: radius,
+            borderTopRightRadius: radius,
+            borderBottom: `1px solid ${dividerColor}`,
+          }}
+        >
+          <span style={{ lineHeight: 1, transform: 'translateY(50%)' }}>{current}</span>
+        </div>
+
+        {/* Back face — top half, pre-rotated -180deg so it faces the
+            viewer once the card has flipped past 90deg. Shows NEXT
+            digit, align-items: flex-start so the digit sits at the
+            top of the face (lines up with the static top half
+            showing next). */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'flex-start',
+            overflow: 'hidden',
+            backfaceVisibility: 'hidden',
+            WebkitBackfaceVisibility: 'hidden',
+            backgroundColor: cardBg,
+            color: digitColor,
+            transform: 'rotateX(-180deg)',
+            borderBottomLeftRadius: radius,
+            borderBottomRightRadius: radius,
+          }}
+        >
+          <span style={{ lineHeight: 1, transform: 'translateY(-50%)' }}>{next}</span>
+        </div>
+      </div>
     </div>
   );
 }
 
-// Delimiter dots are rendered inline inside each .rotor-group in
-// FlipClock below, matching the reference's :nth-child(n+2):nth-child(-n+3)
-// pseudo-element positions (left: 115px, bottom: 20px and 50px,
-// 10x10px circles colored like the rotor-top).
+function FlipColon({
+  scale,
+  color,
+}: {
+  scale: number;
+  color: string;
+}) {
+  const H = 80 * scale;
+  const dotSize = 5 * scale;
+  return (
+    <div
+      style={{
+        height: H,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: dotSize,
+      }}
+    >
+      <div
+        className="rounded-full"
+        style={{ width: dotSize, height: dotSize, backgroundColor: color }}
+      />
+      <div
+        className="rounded-full"
+        style={{ width: dotSize, height: dotSize, backgroundColor: color }}
+      />
+    </div>
+  );
+}
 
 function FlipClock({
   color,
@@ -632,49 +515,32 @@ function FlipClock({
   const mm = String(now.getMinutes()).padStart(2, '0');
   const ss = String(now.getSeconds()).padStart(2, '0');
 
-  // Color palette mirrors the reference CSS exactly:
-  //   dark theme: rotor-top + rotor-leaf-front = #151515 / #FFFFFF
-  //               rotor-bottom + rotor-leaf-rear = #202020 / #EFEFEF
-  //               hinge (rotor:after border-top) = #151515
-  //   light theme: rotor-top + rotor-leaf-front = #DDDDDD / #222222
-  //                rotor-bottom + rotor-leaf-rear = #EEEEEE / #333333
-  //                hinge = #222222
-  //   claude theme: custom warm brown two-tone, no reference.
-  //   neon/accent colors: single dark cards with the chosen color as
-  //   digit color, hinge same as flapBg.
+  // Color palette (sLeeNguyen defaults: --fcc-background: #0f181a,
+  // --fcc-digit-color: #ffffff, --fcc-divider-color: #ffffff66).
+  // We tint by theme + selected color.
   const isPlain = safeColor === 'white' || safeColor === 'ink';
   let cardBg: string;
-  let flapBg: string;
-  let digitColorTop: string;
-  let digitColorBottom: string;
-  let edgeColor: string;
+  let digitColor: string;
+  let dividerColor: string;
   if (theme === 'claude') {
     cardBg = '#3a2e1f';
-    flapBg = '#4a3a25';
-    digitColorTop = isPlain ? flipColor : '#faf6ef';
-    digitColorBottom = isPlain ? flipColor : '#ede4d0';
-    edgeColor = flapBg;
+    digitColor = isPlain ? flipColor : '#faf6ef';
+    dividerColor = '#faf6ef33';
   } else if (isPlain) {
     if (theme === 'dark') {
-      cardBg = '#202020';
-      flapBg = '#151515';
-      digitColorTop = '#ffffff';
-      digitColorBottom = '#efefef';
-      edgeColor = '#151515';
+      cardBg = '#0f181a';
+      digitColor = '#ffffff';
+      dividerColor = '#ffffff66';
     } else {
-      cardBg = '#eeeeee';
-      flapBg = '#dddddd';
-      digitColorTop = '#222222';
-      digitColorBottom = '#333333';
-      edgeColor = '#222222';
+      cardBg = '#f5f5f5';
+      digitColor = '#1a1a1a';
+      dividerColor = '#00000022';
     }
   } else {
-    // Neon/accent: dark single-tone card, glow color
-    cardBg = '#1a1a1a';
-    flapBg = '#0a0a0a';
-    digitColorTop = flipColor;
-    digitColorBottom = flipColor;
-    edgeColor = '#0a0a0a';
+    // Neon/accent: dark card with the chosen color as digit color
+    cardBg = '#0f181a';
+    digitColor = flipColor;
+    dividerColor = `${flipColor}55`;
   }
 
   useEffect(() => {
@@ -697,87 +563,29 @@ function FlipClock({
       ch={c}
       scale={scale}
       cardBg={cardBg}
-      flapBg={flapBg}
-      digitColorTop={digitColorTop}
-      digitColorBottom={digitColorBottom}
-      edgeColor={edgeColor}
+      digitColor={digitColor}
+      dividerColor={dividerColor}
       soundEnabled={soundEnabled}
     />
   );
 
   return (
     <div
-      className="flipdown"
       style={{
-        width: 'auto',
-        height: 'auto',
-        overflow: 'visible',
         display: 'flex',
         alignItems: 'center',
-        gap: 30 * scale,
-        lineHeight: 0,
+        gap: 8 * scale,
+        userSelect: 'none',
       }}
     >
-      <div className="rotor-group" style={{ position: 'relative', display: 'flex', paddingRight: 0 }}>
-        {card(hh[0])}
-        {card(hh[1])}
-        {/* Delimiter dots — reference uses pseudo-elements on the
-            .rotor-group :nth-child(n+2):nth-child(-n+3) positioned
-            115px from the left, 20px and 50px from the bottom. We
-            render them as actual elements for the same visual. */}
-        <div
-          style={{
-            position: 'absolute',
-            left: 115 * scale,
-            bottom: 20 * scale,
-            width: 10 * scale,
-            height: 10 * scale,
-            borderRadius: '50%',
-            backgroundColor: flapBg,
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            left: 115 * scale,
-            bottom: 50 * scale,
-            width: 10 * scale,
-            height: 10 * scale,
-            borderRadius: '50%',
-            backgroundColor: flapBg,
-          }}
-        />
-      </div>
-      <div className="rotor-group" style={{ position: 'relative', display: 'flex', paddingRight: 0 }}>
-        {card(mm[0])}
-        {card(mm[1])}
-        <div
-          style={{
-            position: 'absolute',
-            left: 115 * scale,
-            bottom: 20 * scale,
-            width: 10 * scale,
-            height: 10 * scale,
-            borderRadius: '50%',
-            backgroundColor: flapBg,
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            left: 115 * scale,
-            bottom: 50 * scale,
-            width: 10 * scale,
-            height: 10 * scale,
-            borderRadius: '50%',
-            backgroundColor: flapBg,
-          }}
-        />
-      </div>
-      <div className="rotor-group" style={{ position: 'relative', display: 'flex', paddingRight: 0 }}>
-        {card(ss[0])}
-        {card(ss[1])}
-      </div>
+      {card(hh[0])}
+      {card(hh[1])}
+      <FlipColon scale={scale} color={digitColor} />
+      {card(mm[0])}
+      {card(mm[1])}
+      <FlipColon scale={scale} color={digitColor} />
+      {card(ss[0])}
+      {card(ss[1])}
     </div>
   );
 }
