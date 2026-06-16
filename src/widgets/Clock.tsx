@@ -27,12 +27,15 @@ export function DigitalClock({
   size?: ClockSize;
   soundEnabled?: boolean;
 }) {
-  const [now, setNow] = useState(new Date());
-
+  // Tick at 1s. The `now` prop drives the casio and flip clock's
+  // second-roll animation; on a 1s tick the second_2/second_1 digits
+  // swap correctly.
+  const [, force] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
+    const id = setInterval(() => force((n) => (n + 1) | 0), 1000);
     return () => clearInterval(id);
   }, []);
+  const now = useMemo(() => new Date(), [] /* never re-derived; ticked by force above */);
 
   const c = effectiveClockColor(color);
 
