@@ -206,13 +206,19 @@ function RetroClock({
   const isPlain = safeColor === 'white' || safeColor === 'ink';
   const fontSize = 110 * baseScale;
   const colonFontSize = 110 * baseScale;
+  // Fixed-width digit cells. Real 7-segment displays reserve a slot
+  // per digit so "1" doesn't shrink the frame relative to "8". We
+  // use `tabular-nums` for proportional digits and lock each digit
+  // into a fixed-width inline-block so the overall frame is constant.
+  const digitW = 0.62 * fontSize; // matches 7-seg digit aspect (0.6:1)
+  const colonW = 0.5 * colonFontSize;
 
   // On-segment glow for neon/LED colors. Plain (white/ink) stays flat.
   const textShadow = isPlain ? undefined : `0 0 ${10 * baseScale}px ${hex}aa, 0 0 ${20 * baseScale}px ${hex}55`;
 
   return (
     <div
-      className="p-6 rounded-2xl border-2"
+      className="p-6 rounded-2xl border-2 inline-block"
       style={{
         backgroundColor: 'rgba(0,0,0,0.6)',
         borderColor: `${hex}44`,
@@ -228,11 +234,23 @@ function RetroClock({
           letterSpacing: `${4 * baseScale}px`,
         }}
       >
-        <span style={{ fontSize }}>{hh}</span>
-        <span style={{ fontSize: colonFontSize, marginInline: `${4 * baseScale}px` }}>:</span>
-        <span style={{ fontSize }}>{mm}</span>
-        <span style={{ fontSize: colonFontSize, marginInline: `${4 * baseScale}px` }}>:</span>
-        <span style={{ fontSize }}>{ss}</span>
+        {hh.split('').map((ch, i) => (
+          <span key={`h${i}`} style={{ fontSize, width: digitW, display: 'inline-block', textAlign: 'center' }}>
+            {ch}
+          </span>
+        ))}
+        <span style={{ fontSize: colonFontSize, width: colonW, display: 'inline-block', textAlign: 'center', marginInline: `${4 * baseScale}px` }}>:</span>
+        {mm.split('').map((ch, i) => (
+          <span key={`m${i}`} style={{ fontSize, width: digitW, display: 'inline-block', textAlign: 'center' }}>
+            {ch}
+          </span>
+        ))}
+        <span style={{ fontSize: colonFontSize, width: colonW, display: 'inline-block', textAlign: 'center', marginInline: `${4 * baseScale}px` }}>:</span>
+        {ss.split('').map((ch, i) => (
+          <span key={`s${i}`} style={{ fontSize, width: digitW, display: 'inline-block', textAlign: 'center' }}>
+            {ch}
+          </span>
+        ))}
       </div>
     </div>
   );
