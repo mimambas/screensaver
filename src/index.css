@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'Seven Segment';
+  src: url('/fonts/Seven Segment.ttf') format('truetype');
+  font-display: swap;
+}
+
 * {
   box-sizing: border-box;
 }
