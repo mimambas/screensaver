@@ -15,6 +15,7 @@ interface WeatherData {
   country?: string;
   timezone?: string;
   updatedAt: number;
+  forecast: { date: string; high: number; low: number; code: number; desc: string }[];
 }
 
 interface Coords { lat: number; lon: number }
@@ -121,7 +122,7 @@ export function Weather({
         setLoading(false);
         return;
       }
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,visibility,surface_pressure,weather_code&timezone=auto`;
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,visibility,surface_pressure,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=4`;
       const r = await fetch(url, { signal: ctrl.signal });
       if (!r.ok) {
         setError(`Weather API error: ${r.status}`);
@@ -135,6 +136,18 @@ export function Weather({
         setLoading(false);
         return;
       }
+      // 3-day forecast (skip index 0 which is today). Open-Meteo returns
+      // arrays of length forecast_days; index 0 = today, 1..3 = next 3.
+      const d = j.daily;
+      const forecast: WeatherData['forecast'] = d
+        ? d.time.slice(1, 4).map((date, i) => ({
+            date,
+            high: Math.round(d.temperature_2m_max[i + 1]),
+            low: Math.round(d.temperature_2m_min[i + 1]),
+            code: d.weather_code[i + 1],
+            desc: DESCRIPTIONS[d.weather_code[i + 1]] || 'Unknown',
+          }))
+        : [];
       setData({
         temp: Math.round(c.temperature_2m),
         feels: Math.round(c.apparent_temperature),
@@ -148,6 +161,7 @@ export function Weather({
         country: geo.country,
         timezone: geo.tz,
         updatedAt: Date.now(),
+        forecast,
       });
     } catch (e) {
       if ((e as { name?: string }).name === 'AbortError') return;
@@ -242,6 +256,31 @@ export function Weather({
           <Gauge className="w-3 h-3" /> {data.pressure} hPa
         </div>
       </div>
+      {data.forecast.length > 0 && (
+        <div
+          className={`mt-3 pt-2 border-t ${isDark ? 'border-white/10' : isClaude ? 'border-[#3a2e1f]/15' : 'border-black/10'}`}
+        >
+          <div className={`text-[10px] uppercase tracking-widest opacity-60 mb-1.5 ${labelClass}`}>
+            3-day
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {data.forecast.map((f) => {
+              const FIcon = ICONS[f.code] || Sun;
+              return (
+                <div key={f.date} className="flex flex-col items-center gap-0.5">
+                  <div className={`text-[10px] ${labelClass}`}>
+                    {new Date(f.date).toLocaleDateString(undefined, { weekday: 'short' })}
+                  </div>
+                  <FIcon className="w-4 h-4 opacity-80" />
+                  <div className={`text-[10px] tabular-nums ${muteClass}`}>
+                    {f.high}° / <span className="opacity-60">{f.low}°</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {updatedMin > 0 && (
         <div className={`text-[10px] mt-2 opacity-50 ${labelClass}`}>
           updated {updatedMin}m ago

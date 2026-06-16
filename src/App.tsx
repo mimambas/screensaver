@@ -28,6 +28,8 @@ import { Timer } from './widgets/Timer';
 import { Wallpaper } from './widgets/Wallpaper';
 import { CitiesManager, useWorldCities } from './widgets/WorldClockCities';
 import { Calendar } from './widgets/Calendar';
+import { Draggable } from './widgets/Draggable';
+import { useAmbient } from './widgets/Ambient';
 
 type Layout = 'classic' | 'split' | 'minimal';
 
@@ -56,6 +58,10 @@ type PersistedSettings = {
   showTimer: boolean;
   flipSound: boolean;
   city: string;
+  /** Ambient background sound: 'none' | 'rain' | 'forest' | 'white'. */
+  ambient: 'none' | 'rain' | 'forest' | 'white';
+  /** 0..1. */
+  ambientVolume: number;
   /** Auto-switch theme by local hour (6-18 = light, else dark). */
   autoTheme: boolean;
   /** Auto-launch into fullscreen after N minutes idle. */
@@ -92,6 +98,8 @@ const DEFAULTS: PersistedSettings = {
   autoLaunchMs: 5 * 60_000, // 5 minutes
   wallpaper: 'aurora' as 'none' | 'aurora' | 'stars' | 'rain',
   wallpaperIntensity: 0.4,
+  ambient: 'none' as 'none' | 'rain' | 'forest' | 'white',
+  ambientVolume: 0.3,
 };
 
 function loadSettings(): PersistedSettings {
@@ -158,6 +166,8 @@ export default function App() {
   const [autoLaunchMs, setAutoLaunchMs] = useState<number>(initial.autoLaunchMs);
   const [wallpaper, setWallpaper] = useState<'none' | 'aurora' | 'stars' | 'rain'>(initial.wallpaper);
   const [wallpaperIntensity, setWallpaperIntensity] = useState<number>(initial.wallpaperIntensity);
+  const [ambient, setAmbient] = useState<'none' | 'rain' | 'forest' | 'white'>(initial.ambient);
+  const [ambientVolume, setAmbientVolume] = useState<number>(initial.ambientVolume);
   // Custom user-managed city list for WorldClock. Defaults to the
   // 5 built-in cities; user can add/remove via the CitiesManager UI.
   const { cities: worldCities } = useWorldCities();
@@ -174,6 +184,7 @@ export default function App() {
         showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
         flipSound, city, autoTheme, dateLocale, dateFormat,
         autoLaunch, autoLaunchMs, wallpaper, wallpaperIntensity,
+        ambient, ambientVolume,
       };
       window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(snap));
     } catch {
@@ -185,6 +196,7 @@ export default function App() {
     showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
     flipSound, city, autoTheme, dateLocale, dateFormat,
     autoLaunch, autoLaunchMs, wallpaper, wallpaperIntensity,
+    ambient, ambientVolume,
   ]);
 
   const toggleFullscreen = useCallback(async () => {
@@ -327,9 +339,15 @@ export default function App() {
     setAutoLaunchMs(DEFAULTS.autoLaunchMs);
     setWallpaper(DEFAULTS.wallpaper);
     setWallpaperIntensity(DEFAULTS.wallpaperIntensity);
+    setAmbient(DEFAULTS.ambient);
+    setAmbientVolume(DEFAULTS.ambientVolume);
   };
 
   // While asleep, render nothing — black overlay handles the rest.
+  // Drive the ambient sound engine. Renders nothing. Must be called
+  // before any early returns (hooks rules).
+  useAmbient(ambient, ambientVolume);
+
   if (sleep.isAsleep) {
     return <SleepTimerOverlay show onWake={sleep.wake} />;
   }
@@ -609,6 +627,53 @@ export default function App() {
                 step={0.05}
                 value={wallpaperIntensity}
                 onChange={(e) => setWallpaperIntensity(Number(e.target.value))}
+                className="flex-1 accent-current"
+              />
+            </label>
+          )}
+
+          <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
+            Ambient Sound
+          </div>
+          <div className="grid grid-cols-4 gap-1 mb-2">
+            {(['none', 'rain', 'forest', 'white'] as const).map((a) => (
+              <button
+                key={a}
+                type="button"
+                onClick={() => setAmbient(a)}
+                aria-pressed={ambient === a}
+                className={`px-1 py-2 rounded-lg text-[10px] capitalize transition-colors ${
+                  ambient === a
+                    ? isDark(theme)
+                      ? 'bg-white/15 text-white'
+                      : isClaude(theme)
+                      ? 'bg-[#d4b896] text-[#3a2e1f]'
+                      : 'bg-black/15 text-black'
+                    : isDark(theme)
+                    ? 'hover:bg-white/10 text-white/80'
+                    : isClaude(theme)
+                    ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/80'
+                    : 'hover:bg-black/10 text-black/80'
+                }`}
+              >
+                {a === 'none' ? '🔇' : a === 'rain' ? '🌧' : a === 'forest' ? '🌲' : '🌫'} {a}
+              </button>
+            ))}
+          </div>
+          {ambient !== 'none' && (
+            <label
+              className={`flex items-center gap-2 mb-4 px-2 py-1.5 rounded-lg text-[10px] ${
+                isDark(theme) ? 'text-white/60' : isClaude(theme) ? 'text-[#3a2e1f]/60' : 'text-black/60'
+              }`}
+            >
+              <span>Volume</span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={ambientVolume}
+                onChange={(e) => setAmbientVolume(Number(e.target.value))}
                 className="flex-1 accent-current"
               />
             </label>
@@ -1035,9 +1100,23 @@ export default function App() {
       {layout === 'classic' && (
         <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-8 gap-8">
           <DigitalClock style={clockStyle} color={clockColor} size={clockSize} soundEnabled={flipSound} theme={theme} />
-          {showDate && <DateDisplay theme={theme} locale={dateLocale} format={dateFormat} />}
-          {showCalendar && <div className="mt-2"><Calendar theme={theme} locale={dateLocale} /></div>}
-          {showWorldClock && <WorldClock color={clockColor} theme={theme} cities={worldCities} />}
+          {showDate && (
+            <Draggable id="date" theme={theme}>
+              <DateDisplay theme={theme} locale={dateLocale} format={dateFormat} />
+            </Draggable>
+          )}
+          {showCalendar && (
+            <div className="mt-2">
+              <Draggable id="calendar" theme={theme}>
+                <Calendar theme={theme} locale={dateLocale} />
+              </Draggable>
+            </div>
+          )}
+          {showWorldClock && (
+            <Draggable id="worldclock" theme={theme}>
+              <WorldClock color={clockColor} theme={theme} cities={worldCities} />
+            </Draggable>
+          )}
 
           {(showPomodoro || showStopwatch || showDayProgress || showTimer) && (
             <div className="flex flex-wrap items-start justify-center gap-12 mt-2">
