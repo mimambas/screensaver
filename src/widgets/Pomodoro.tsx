@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Play, Pause, RotateCcw, Coffee, Brain } from 'lucide-react';
 import { playChime } from './audio';
 import type { ThemeName } from './clock-constants';
@@ -18,6 +18,7 @@ const LABELS: Record<Mode, string> = {
 };
 
 const STORAGE_KEY = 'screensaver.pomodoro.v1';
+const STATS_KEY = 'screensaver.pomodoro.stats.v1';
 
 type PersistedState = {
   mode: Mode;
@@ -26,6 +27,42 @@ type PersistedState = {
   longMin: number;
   cyclesCompleted: number;
 };
+
+// Daily stats: { 'YYYY-MM-DD': focusMinutes }. We keep ~30 days of
+// history for a small weekly bar chart.
+type Stats = Record<string, number>;
+
+function loadStats(): Stats {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(STATS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) return {};
+    return parsed as Stats;
+  } catch {
+    return {};
+  }
+}
+
+function saveStats(stats: Stats) {
+  try {
+    // Prune entries older than 30 days to keep the storage tidy.
+    const cutoff = Date.now() - 30 * 86_400_000;
+    const next: Stats = {};
+    for (const [k, v] of Object.entries(stats)) {
+      const t = new Date(k).getTime();
+      if (t >= cutoff) next[k] = v;
+    }
+    window.localStorage.setItem(STATS_KEY, JSON.stringify(next));
+  } catch {
+    // ignore
+  }
+}
+
+function dayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 function loadState(): PersistedState {
   const fallback: PersistedState = {
@@ -70,6 +107,9 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
   // behavior of the canonical Pomodoro timer. User can stop a phase
   // by pausing; auto-start is the default.
   const [autoStart, setAutoStart] = useState(true);
+  // Daily focus stats. Persisted on every work-phase completion.
+  const [stats, setStats] = useState<Stats>(() => loadStats());
+  const [showStats, setShowStats] = useState(false);
 
   useEffect(() => {
     try {
@@ -81,6 +121,10 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
       // localStorage may be unavailable
     }
   }, [mode, workMin, shortMin, longMin, cyclesCompleted]);
+
+  useEffect(() => {
+    saveStats(stats);
+  }, [stats]);
 
   useEffect(() => {
     if (!running) return;
@@ -98,7 +142,14 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
                 ? 'long'
                 : 'short'
               : 'work';
-          if (prev === 'work') setCyclesCompleted((c) => c + 1);
+          if (prev === 'work') {
+            setCyclesCompleted((c) => c + 1);
+            // Log this work session's minutes to the daily stats.
+            setStats((s) => {
+              const k = dayKey(new Date());
+              return { ...s, [k]: (s[k] || 0) + workMin };
+            });
+          }
           setSeconds(DURATIONS[next]);
           if (autoStart) {
             // Kick the next phase after a brief pause so the user sees
@@ -115,14 +166,50 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
     return () => window.clearInterval(id);
     // We intentionally exclude `seconds`, `mode`, `cyclesCompleted` to keep the
     // interval stable — state reads are taken from the latest closure via setState.
-  }, [running, cyclesCompleted, autoStart]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running, cyclesCompleted, autoStart, workMin]);
 
   const reset = () => {
     setRunning(false);
     setMode('work');
     setSeconds(DURATIONS.work);
     setCyclesCompleted(0);
+    setStats({});
   };
+
+  // Compute stats summaries: total minutes in the last 7 days, and
+  // the per-day series for the bar chart.
+  const last7 = useMemo(() => {
+    const out: { key: string; label: string; minutes: number }[] = [];
+    const today = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const k = dayKey(d);
+      out.push({
+        key: k,
+        label: d.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 1),
+        minutes: stats[k] || 0,
+      });
+    }
+    return out;
+  }, [stats]);
+  const total7 = useMemo(() => last7.reduce((s, d) => s + d.minutes, 0), [last7]);
+  const max7 = useMemo(() => Math.max(1, ...last7.map((d) => d.minutes)), [last7]);
+  // Current daily streak: how many consecutive days (counting back
+  // from today) had at least 1 minute of focus.
+  const streak = useMemo(() => {
+    let s = 0;
+    const today = new Date();
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const k = dayKey(d);
+      if ((stats[k] || 0) > 0) s++;
+      else break;
+    }
+    return s;
+  }, [stats]);
 
   const skip = () => {
     setRunning(false);
@@ -305,6 +392,41 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
         />
         auto-start next
       </label>
+      <button
+        type="button"
+        onClick={() => setShowStats((v) => !v)}
+        className={`text-[10px] ${labelClass} hover:opacity-80`}
+        aria-expanded={showStats}
+      >
+        {showStats ? '▾ stats' : '▸ stats'} · {total7}m this week · {streak}d streak
+      </button>
+      {showStats && (
+        <div
+          className={`w-full ${labelClass} text-[10px] flex flex-col gap-0.5`}
+          aria-label="Last 7 days of focus time"
+        >
+          <div className="flex items-end justify-between gap-0.5 h-8">
+            {last7.map((d) => (
+              <div key={d.key} className="flex-1 flex flex-col items-center gap-0.5">
+                <div className="w-full flex items-end h-6">
+                  <div
+                    className={`w-full rounded-sm ${fillBg}`}
+                    style={{ height: `${(d.minutes / max7) * 100}%`, minHeight: d.minutes > 0 ? 2 : 0 }}
+                    title={`${d.minutes}m`}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between gap-0.5 opacity-60">
+            {last7.map((d) => (
+              <div key={`l-${d.key}`} className="flex-1 text-center">
+                {d.label}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

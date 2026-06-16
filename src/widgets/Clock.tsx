@@ -1232,11 +1232,25 @@ export function DateDisplay({
   const label =
     theme === 'dark' ? 'text-white/60' : theme === 'claude' ? 'text-[#3a2e1f]/70' : 'text-black/70';
   const main = theme === 'dark' ? 'text-white' : theme === 'claude' ? 'text-[#3a2e1f]' : 'text-black';
+  // Timezone indicator. We render the short form (e.g. "WIB" or
+  // "GMT+7") based on what Intl knows about the current zone. Falls
+  // back to UTC offset if the locale doesn't expose a zone name.
+  const tzName = (() => {
+    try {
+      const parts = new Intl.DateTimeFormat(locale, { timeZoneName: 'short' }).formatToParts(
+        new Date(),
+      );
+      return parts.find((p) => p.type === 'timeZoneName')?.value ?? '';
+    } catch {
+      return '';
+    }
+  })();
 
   return (
     <div className="text-center">
       <div className={`text-2xl font-light tracking-wide ${main}`}>{dayName}</div>
       <div className={`text-sm mt-1 ${label}`}>{dateStr}</div>
+      {tzName && <div className={`text-[10px] mt-0.5 opacity-60 ${label}`}>{tzName}</div>}
     </div>
   );
 }
