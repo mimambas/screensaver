@@ -30,12 +30,16 @@ export function DigitalClock({
   // Tick at 1s. The `now` prop drives the casio and flip clock's
   // second-roll animation; on a 1s tick the second_2/second_1 digits
   // swap correctly.
-  const [, force] = useState(0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const [tick, setTick] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => force((n) => (n + 1) | 0), 1000);
+    const id = setInterval(() => setTick((n) => (n + 1) | 0), 1000);
     return () => clearInterval(id);
   }, []);
-  const now = useMemo(() => new Date(), [] /* never re-derived; ticked by force above */);
+  // Recreate `now` on every tick. The interval above guarantees
+  // `tick` changes once per second, which (via deps) re-derives `now`.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const now = useMemo(() => new Date(), [tick]);
 
   const c = effectiveClockColor(color);
 
