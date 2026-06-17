@@ -28,6 +28,7 @@ import { Timer } from './widgets/Timer';
 import { Wallpaper } from './widgets/Wallpaper';
 import { CitiesManager } from './widgets/WorldClockCities';
 import { useWorldCities } from './widgets/use-world-cities';
+import { useT, useLocale } from './i18n';
 import { Calendar } from './widgets/Calendar';
 import { Draggable } from './widgets/Draggable';
 import { useAmbient } from './widgets/Ambient';
@@ -173,6 +174,10 @@ export default function App() {
   const [wallpaperIntensity, setWallpaperIntensity] = useState<number>(initial.wallpaperIntensity);
   const [ambient, setAmbient] = useState<'none' | 'rain' | 'forest' | 'white'>(initial.ambient);
   const [ambientVolume, setAmbientVolume] = useState<number>(initial.ambientVolume);
+  const t = useT();
+  const [locale, setLocale] = useLocale();
+  void locale;
+  void setLocale; // referenced via the Language toggle below
   // WorldClock shows the user's custom city list (default 5 if they
   // haven't added/removed any). The CitiesManager in the settings
   // panel and the live WorldClock widget both read/write the same
@@ -432,7 +437,7 @@ export default function App() {
       >
         <button
           onClick={toggleFullscreen}
-          aria-label="Toggle fullscreen"
+          aria-label={t('control.toggleFullscreen')}
           disabled={isStandalone}
           className={`p-2 rounded-full transition-colors ${
             isStandalone
@@ -441,18 +446,18 @@ export default function App() {
               ? 'bg-white/5 hover:bg-white/10'
               : 'bg-black/5 hover:bg-black/10'
           }`}
-          title={isStandalone ? 'Already fullscreen (PWA)' : 'Fullscreen (F)'}
+          title={isStandalone ? t('control.fullscreenPwa') : t('control.fullscreen')}
         >
           {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
         </button>
         <button
           onClick={() => setShowSettings(!showSettings)}
-          aria-label="Toggle settings"
+          aria-label={t('control.toggleSettings')}
           aria-expanded={showSettings}
           className={`p-2 rounded-full transition-colors ${
             isDark(theme) ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'
           }`}
-          title="Settings (S)"
+          title={t('control.settings')}
         >
           <Settings className="w-4 h-4" />
         </button>
@@ -491,13 +496,13 @@ export default function App() {
               : 'bg-black/5 text-black/70'
           }`}
         >
-          <span><kbd className="font-semibold">F</kbd> fullscreen</span>
+          <span><kbd className="font-semibold">F</kbd> {t('shortcuts.hint.fullscreen')}</span>
           <span className="opacity-40">·</span>
-          <span><kbd className="font-semibold">S</kbd> settings</span>
+          <span><kbd className="font-semibold">S</kbd> {t('shortcuts.hint.settings')}</span>
           <span className="opacity-40">·</span>
-          <span><kbd className="font-semibold">H</kbd> hide UI</span>
+          <span><kbd className="font-semibold">H</kbd> {t('shortcuts.hint.hideUI')}</span>
           <span className="opacity-40">·</span>
-          <span><kbd className="font-semibold">Esc</kbd> close / wake</span>
+          <span><kbd className="font-semibold">Esc</kbd> {t('shortcuts.hint.closeWake')}</span>
         </div>
       </div>
 
@@ -505,7 +510,7 @@ export default function App() {
       {showSettings && (
         <div
           role="dialog"
-          aria-label="Settings"
+          aria-label={t('settings.title')}
           className={`absolute top-16 right-4 z-20 backdrop-blur-xl border rounded-2xl p-4 w-72 max-h-[calc(100vh-5rem)] overflow-y-auto ${
             isDark(theme)
               ? 'bg-black/60 border-white/20 text-white'
@@ -514,7 +519,7 @@ export default function App() {
               : 'bg-white/90 border-black/20 text-black shadow-2xl'
           }`}
         >
-          <div className="text-xs uppercase tracking-widest opacity-70 mb-3">Layout</div>
+          <div className="text-xs uppercase tracking-widest opacity-70 mb-3">{t('settings.section.layout')}</div>
           <div className="space-y-1 mb-4">
             {(['classic', 'split', 'minimal'] as Layout[]).map((l) => (
               <button
@@ -544,15 +549,45 @@ export default function App() {
           </div>
 
           <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
-            Theme
+            {t('settings.section.language')}
+          </div>
+          <div className="grid grid-cols-2 gap-1 mb-4">
+            {(['en', 'id'] as const).map((lang) => (
+              <button
+                key={lang}
+                type="button"
+                onClick={() => setLocale(lang)}
+                aria-pressed={locale === lang}
+                data-lang={lang}
+                className={`px-2 py-2 rounded-lg text-xs transition-colors ${
+                  locale === lang
+                    ? isDark(theme)
+                      ? 'bg-white/15 text-white'
+                      : isClaude(theme)
+                      ? 'bg-[#d4b896] text-[#3a2e1f]'
+                      : 'bg-black/15 text-black'
+                    : isDark(theme)
+                    ? 'hover:bg-white/10 text-white/80'
+                    : isClaude(theme)
+                    ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/80'
+                    : 'hover:bg-black/10 text-black/80'
+                }`}
+              >
+                {lang === 'en' ? t('settings.language.en') : t('settings.language.id')}
+              </button>
+            ))}
+          </div>
+
+          <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
+            {t('settings.section.theme')}
           </div>
           <div className="grid grid-cols-3 gap-1 mb-4">
-            {(['dark', 'light', 'claude'] as ThemeName[]).map((t) => (
+            {(['dark', 'light', 'claude'] as ThemeName[]).map((themeId) => (
               <button
-                key={t}
-                onClick={() => setTheme(t)}
+                key={themeId}
+                onClick={() => setTheme(themeId)}
                 className={`px-2 py-2 rounded-lg text-xs transition-colors ${
-                  theme === t
+                  theme === themeId
                     ? isDark(theme)
                       ? 'bg-white/15 text-white'
                       : isClaude(theme)
@@ -565,7 +600,11 @@ export default function App() {
                     : 'hover:bg-black/10 text-black/80'
                 }`}
               >
-                {t === 'dark' ? '🌑 Dark' : t === 'light' ? '☀️ Light' : '🍂 Claude'}
+                {themeId === 'dark'
+                  ? t('settings.theme.dark')
+                  : themeId === 'light'
+                  ? t('settings.theme.light')
+                  : t('settings.theme.claude')}
               </button>
             ))}
           </div>
@@ -578,7 +617,7 @@ export default function App() {
                 : 'hover:bg-black/5 text-black/80'
             }`}
           >
-            <span>Auto theme by hour</span>
+            <span>{t('settings.theme.auto')}</span>
             <input
               type="checkbox"
               checked={autoTheme}
@@ -593,7 +632,7 @@ export default function App() {
                 isDark(theme) ? 'text-white/60' : isClaude(theme) ? 'text-[#3a2e1f]/60' : 'text-black/60'
               }`}
             >
-              <span>Fullscreen after</span>
+              <span>{t('settings.fullscreen.after')}</span>
               <input
                 type="number"
                 min={1}
@@ -607,12 +646,12 @@ export default function App() {
                   isDark(theme) ? 'text-white' : isClaude(theme) ? 'text-[#3a2e1f]' : 'text-black'
                 }`}
               />
-              <span>min idle</span>
+              <span>{t('settings.fullscreen.minIdle')}</span>
             </div>
           )}
 
           <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
-            Wallpaper
+            {t('settings.section.wallpaper')}
           </div>
           <div className="grid grid-cols-4 gap-1 mb-2">
             {(['none', 'aurora', 'stars', 'rain', 'geometric', 'mesh', 'fireflies'] as const).map((w) => (
@@ -659,7 +698,7 @@ export default function App() {
                 isDark(theme) ? 'text-white/60' : isClaude(theme) ? 'text-[#3a2e1f]/60' : 'text-black/60'
               }`}
             >
-              <span>Intensity</span>
+              <span>{t('settings.wallpaper.intensity')}</span>
               <input
                 type="range"
                 min={0}
@@ -673,7 +712,7 @@ export default function App() {
           )}
 
           <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
-            Ambient Sound
+            {t('settings.section.ambient')}
           </div>
           <div className="grid grid-cols-4 gap-1 mb-2">
             {(['none', 'rain', 'forest', 'white'] as const).map((a) => (
@@ -706,7 +745,7 @@ export default function App() {
                 isDark(theme) ? 'text-white/60' : isClaude(theme) ? 'text-[#3a2e1f]/60' : 'text-black/60'
               }`}
             >
-              <span>Volume</span>
+              <span>{t('settings.ambient.volume')}</span>
               <input
                 type="range"
                 min={0}
@@ -720,7 +759,7 @@ export default function App() {
           )}
 
           <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
-            Clock Style
+            {t('settings.section.clockStyle')}
           </div>
           <div className="grid grid-cols-5 gap-1 mb-4">
             {CLOCK_STYLES.map((s) => (
@@ -750,14 +789,14 @@ export default function App() {
           </div>
 
           <div className="text-xs uppercase tracking-widest opacity-70 mb-3">
-            Clock Size
+            {t('settings.section.clockSize')}
           </div>
           <div className="flex items-stretch gap-1 mb-4">
             <button
               type="button"
               onClick={() => adjustClockSize(-CLOCK_SIZE_PRESETS.step)}
               disabled={clockSize <= CLOCK_SIZE_PRESETS.min}
-              aria-label="Decrease clock size"
+              aria-label={t('clock.decrease')}
               className={`px-2 rounded-lg text-sm transition-colors ${
                 clockSize <= CLOCK_SIZE_PRESETS.min
                   ? isDark(theme)
@@ -790,7 +829,7 @@ export default function App() {
               type="button"
               onClick={() => adjustClockSize(CLOCK_SIZE_PRESETS.step)}
               disabled={clockSize >= CLOCK_SIZE_PRESETS.max}
-              aria-label="Increase clock size"
+              aria-label={t('clock.increase')}
               className={`px-2 rounded-lg text-sm transition-colors ${
                 clockSize >= CLOCK_SIZE_PRESETS.max
                   ? isDark(theme)
@@ -835,7 +874,7 @@ export default function App() {
 
           <div className="flex items-baseline justify-between mb-3">
             <div className="text-xs uppercase tracking-widest opacity-70">
-              Clock Color
+              {t('settings.section.clockColor')}
             </div>
             <div className="text-[10px] opacity-50">
               {CLOCK_COLORS.find((c) => c.id === clockColor)?.label ?? clockColor}
@@ -886,13 +925,13 @@ export default function App() {
           </div>
 
           <div className="text-xs uppercase tracking-widest opacity-70 mb-3">
-            Weather City
+            {t('settings.section.weatherCity')}
           </div>
           <input
             type="text"
             value={city}
             onChange={(e) => setCity(e.target.value)}
-            placeholder="Jakarta, Tokyo, London…"
+            placeholder={t('settings.weather.placeholder')}
             className={`w-full px-3 py-2 rounded-lg text-sm mb-4 outline-none ${
               isDark(theme)
                 ? 'bg-white/10 text-white placeholder-white/40 focus:bg-white/15'
@@ -903,7 +942,7 @@ export default function App() {
           />
 
           <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
-            Visibility
+            {t('settings.weather.visibility')}
           </div>
           <div className="flex gap-1 mb-3">
             <button
@@ -931,7 +970,7 @@ export default function App() {
                   : 'bg-black/5 hover:bg-black/15 text-black/80'
               }`}
             >
-              Reset
+              {t('common.reset')}
             </button>
           </div>
           <div className="space-y-1">
@@ -994,7 +1033,7 @@ export default function App() {
               <div className={`text-[10px] uppercase tracking-widest opacity-70 mb-2 ${
                 isDark(theme) ? 'text-white/60' : isClaude(theme) ? 'text-[#3a2e1f]/60' : 'text-black/60'
               }`}>
-                Cities ({worldCities.length})
+                {t('settings.section.cities', { n: worldCities.length })}
               </div>
               <CitiesManager theme={theme} />
             </div>
@@ -1060,15 +1099,15 @@ export default function App() {
           )}
 
           <div className={`text-[10px] mt-4 opacity-40 leading-relaxed ${isDark(theme) ? 'text-white' : 'text-black'}`}>
-            Shortcuts: <kbd className="px-1 border border-current/30 rounded">F</kbd> fullscreen ·{' '}
-            <kbd className="px-1 border border-current/30 rounded">S</kbd> settings ·{' '}
-            <kbd className="px-1 border border-current/30 rounded">H</kbd> hide UI ·{' '}
-            <kbd className="px-1 border border-current/30 rounded">Esc</kbd> close/wake
+            {t('settings.section.shortcuts')} <kbd className="px-1 border border-current/30 rounded">F</kbd> {t('shortcuts.hint.fullscreen')} ·{' '}
+            <kbd className="px-1 border border-current/30 rounded">S</kbd> {t('shortcuts.hint.settings')} ·{' '}
+            <kbd className="px-1 border border-current/30 rounded">H</kbd> {t('shortcuts.hint.hideUI')} ·{' '}
+            <kbd className="px-1 border border-current/30 rounded">Esc</kbd> {t('shortcuts.hint.closeWakeShort')}
           </div>
 
           {/* Settings export / import — sync current config between machines. */}
           <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
-            Backup
+            {t('settings.section.backup')}
           </div>
           <div className="flex gap-1 mb-3">
             <button
@@ -1097,7 +1136,7 @@ export default function App() {
                   : 'bg-black/5 hover:bg-black/15 text-black'
               }`}
             >
-              Export
+              {t('settings.backup.export')}
             </button>
             <label
               className={`flex-1 px-2 py-1.5 rounded-lg text-xs text-center transition-colors cursor-pointer ${
@@ -1108,7 +1147,7 @@ export default function App() {
                   : 'bg-black/5 hover:bg-black/15 text-black'
               }`}
             >
-              Import
+              {t('settings.backup.import')}
               <input
                 type="file"
                 accept="application/json"
