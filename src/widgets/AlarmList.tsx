@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { Bell, BellOff, Plus, Trash2, X } from 'lucide-react';
 import { playChime, unlockAudio } from './audio';
 import type { ThemeName } from './clock-constants';
+import { useT } from '../i18n';
 
 interface Alarm {
   id: string;
@@ -53,13 +54,26 @@ function saveAlarms(alarms: Alarm[]) {
   }
 }
 
+// Single-letter day labels rendered in the alarm chips. The full
+// names live in the i18n catalog and feed the title/aria-label
+// attributes below.
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const DAY_KEYS_SHORT = [
+  'alarm.dow.sun',
+  'alarm.dow.mon',
+  'alarm.dow.tue',
+  'alarm.dow.wed',
+  'alarm.dow.thu',
+  'alarm.dow.fri',
+  'alarm.dow.sat',
+] as const;
 
 export function AlarmList({
   theme = 'dark',
 }: {
   theme?: ThemeName;
 }) {
+  const t = useT();
   const [alarms, setAlarms] = useState<Alarm[]>(loadAlarms);
   const [showAdd, setShowAdd] = useState(false);
   const [firingId, setFiringId] = useState<string | null>(null);
@@ -208,7 +222,7 @@ export function AlarmList({
           className={`p-1 rounded-full ${
             theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-black/10'
           }`}
-          aria-label="Add alarm"
+          aria-label={t('alarm.add')}
         >
           <Plus className="w-3 h-3" />
         </button>
@@ -247,7 +261,7 @@ export function AlarmList({
               type="button"
               onClick={() => toggle(a.id)}
               className={`p-1 ${a.enabled ? '' : 'opacity-40'}`}
-              aria-label={a.enabled ? 'Disable alarm' : 'Enable alarm'}
+              aria-label={a.enabled ? t('alarm.disable') : t('alarm.enable')}
             >
               {a.enabled ? <Bell className="w-3 h-3" /> : <BellOff className="w-3 h-3" />}
             </button>
@@ -277,8 +291,8 @@ export function AlarmList({
                           ? theme === 'dark' ? 'bg-white/30' : 'bg-black/30'
                           : theme === 'dark' ? 'bg-white/5' : 'bg-black/5'
                       }`}
-                      title={['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][i]}
-                      aria-label={`Toggle ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][i]}`}
+                      title={t(DAY_KEYS_SHORT[i])}
+                      aria-label={t('common.add') + ' ' + t(DAY_KEYS_SHORT[i])}
                     >
                       {d}
                     </button>
@@ -299,7 +313,7 @@ export function AlarmList({
               type="button"
               onClick={() => remove(a.id)}
               className={`p-1 opacity-40 hover:opacity-100 ${theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-black/10'} rounded`}
-              aria-label="Delete alarm"
+              aria-label={t('alarm.delete')}
             >
               <Trash2 className="w-3 h-3" />
             </button>
@@ -310,7 +324,7 @@ export function AlarmList({
                 className={`p-1 text-[10px] rounded ${
                   theme === 'dark' ? 'bg-white/15 hover:bg-white/25 text-white' : 'bg-black/15 hover:bg-black/25 text-black'
                 }`}
-                title="Snooze 5 minutes"
+                title={t('alarm.snooze')}
               >
                 Zz 5
               </button>
@@ -331,6 +345,7 @@ function AddAlarmForm({
   onAdd: (time: string, label: string, days: number[], opts?: { oneShot?: boolean }) => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const [time, setTime] = useState(() => {
     const d = new Date();
     d.setMinutes(d.getMinutes() + 30);
@@ -359,7 +374,7 @@ function AddAlarmForm({
           type="text"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          placeholder="Label (optional)"
+          placeholder={t('alarm.label', { opt: t('common.optional') })}
           maxLength={40}
           className={`flex-1 bg-transparent text-xs outline-none ${
             theme === 'dark' ? 'text-white placeholder-white/30' : 'text-black placeholder-black/30'
@@ -369,7 +384,7 @@ function AddAlarmForm({
           type="button"
           onClick={onCancel}
           className="p-1 opacity-60 hover:opacity-100"
-          aria-label="Cancel"
+          aria-label={t('common.cancel')}
         >
           <X className="w-3 h-3" />
         </button>

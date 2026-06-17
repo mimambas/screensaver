@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { ThemeName } from './clock-constants';
+import { useT } from '../i18n';
 
 const STORAGE_KEY = 'screensaver.draggable-positions.v1';
 
@@ -39,6 +40,7 @@ export function Draggable({
   theme?: ThemeName;
   children: ReactNode;
 }) {
+  const t = useT();
   const [pos, setPos] = useState<Position | null>(() => loadPositions()[id] ?? null);
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef<{ startX: number; startY: number; baseLeft: number; baseTop: number } | null>(null);
@@ -132,7 +134,7 @@ export function Draggable({
             data-drag-handle
             onDoubleClick={onHandleDoubleClick}
             className={`text-[9px] uppercase tracking-widest px-2 py-0.5 rounded cursor-grab select-none ${handleClass}`}
-            title="Drag to move, double-click to reset"
+            title={t('draggable.handleTitle')}
           >
             ⋮⋮ {id}
           </span>
@@ -140,7 +142,7 @@ export function Draggable({
             type="button"
             onClick={onHandleDoubleClick}
             className={`text-[9px] px-1.5 py-0.5 rounded ${handleClass}`}
-            title="Reset position"
+            title={t('draggable.resetTitle')}
           >
             reset
           </button>

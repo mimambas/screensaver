@@ -2,6 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { Play, Pause, RotateCcw, Coffee, Brain } from 'lucide-react';
 import { playChime } from './audio';
 import type { ThemeName } from './clock-constants';
+import { useT } from '../i18n';
+
+// Mode display label is now derived from i18n via t() at render
+// time. (No constant lookup needed; see the JSX below.)
 
 type Mode = 'work' | 'short' | 'long';
 
@@ -9,12 +13,6 @@ const DURATIONS: Record<Mode, number> = {
   work: 25 * 60,
   short: 5 * 60,
   long: 15 * 60,
-};
-
-const LABELS: Record<Mode, string> = {
-  work: 'Focus',
-  short: 'Short Break',
-  long: 'Long Break',
 };
 
 const STORAGE_KEY = 'screensaver.pomodoro.v1';
@@ -109,6 +107,7 @@ function fmt(seconds: number) {
 }
 
 export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
+  const t = useT();
   const persisted = loadState();
   const [mode, setMode] = useState<Mode>(persisted.mode);
   const [workMin, setWorkMin] = useState(persisted.workMin);
@@ -376,7 +375,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
           of 4 (every 4th = long break). */}
       <div
         className="flex gap-1.5"
-        aria-label={`${cyclesCompleted} focus sessions completed`}
+        aria-label={t('pomodoro.cyclesCompleted', { n: cyclesCompleted })}
       >
         {[0, 1, 2, 3].map((i) => (
           <span
@@ -410,14 +409,15 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
                 : `${labelClass} ${btnHover} disabled:opacity-40`
             }`}
           >
-            {m === 'work' ? '🎯' : m === 'short' ? '☕' : '🧘'} {m}
+            {m === 'work' ? '🎯' : m === 'short' ? '☕' : '🧘'}{' '}
+            {m === 'work' ? t('pomodoro.mode.workShort') : m === 'short' ? t('pomodoro.mode.shortShort') : t('pomodoro.mode.longShort')}
           </button>
         ))}
       </div>
       <div className={`text-xs uppercase tracking-widest ${labelClass}`}>
-        {LABELS[mode]}
+        {mode === 'work' ? t('pomodoro.mode.work') : mode === 'short' ? t('pomodoro.mode.short') : t('pomodoro.mode.long')}
         {mode === 'work' && cyclesCompleted > 0 && (
-          <span className="ml-2 opacity-60">· cycle {cyclesCompleted + 1}</span>
+          <span className="ml-2 opacity-60">· {t('pomodoro.cycleOf', { n: cyclesCompleted + 1 })}</span>
         )}
       </div>
       <div
@@ -438,7 +438,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
           onClick={() => adjustDuration(mode, -5)}
           disabled={running}
           className={`px-1.5 py-0.5 rounded ${btnHover} disabled:opacity-30`}
-          aria-label="Decrease duration"
+          aria-label={t('pomodoro.decrease')}
         >
           −5
         </button>
@@ -448,7 +448,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
           onClick={() => adjustDuration(mode, 5)}
           disabled={running}
           className={`px-1.5 py-0.5 rounded ${btnHover} disabled:opacity-30`}
-          aria-label="Increase duration"
+          aria-label={t('pomodoro.increase')}
         >
           +5
         </button>
@@ -456,22 +456,22 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
       <div className="flex gap-2 mt-1">
         <button
           onClick={() => setRunning((r) => !r)}
-          aria-label={running ? 'Pause' : 'Start'}
+          aria-label={running ? t('pomodoro.pause') : t('pomodoro.start')}
           className={`p-2 rounded-full transition-colors ${btnHover}`}
         >
           {running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
         </button>
         <button
           onClick={skip}
-          aria-label="Skip phase"
-          title="Skip to next phase"
+          aria-label={t('pomodoro.skip')}
+          title={t('pomodoro.skipTitle')}
           className={`p-2 rounded-full transition-colors ${btnHover}`}
         >
           {mode === 'work' ? <Coffee className="w-4 h-4" /> : <Brain className="w-4 h-4" />}
         </button>
         <button
           onClick={reset}
-          aria-label="Reset"
+          aria-label={t('common.reset')}
           className={`p-2 rounded-full transition-colors ${btnHover}`}
         >
           <RotateCcw className="w-4 h-4" />
@@ -486,7 +486,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
           onChange={(e) => setAutoStart(e.target.checked)}
           className="accent-current"
         />
-        auto-start next
+        {t('pomodoro.autoStart')}
       </label>
       <button
         type="button"
@@ -494,18 +494,19 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
         className={`text-[10px] ${labelClass} hover:opacity-80`}
         aria-expanded={showStats}
       >
-        {showStats ? '▾ stats' : '▸ stats'} · {total7}m this week · {streak}d streak
+        {showStats ? `▾ ${t('pomodoro.statsToggle')}` : `▸ ${t('pomodoro.statsToggle')}`} ·{' '}
+        {t('pomodoro.statsSummary', { total: total7, streak })}
       </button>
       {showStats && (
         <div
           className={`w-full ${labelClass} text-[10px] flex flex-col gap-1.5`}
-          aria-label={`Last ${range === '7d' ? '7' : '30'} days of focus time`}
+          aria-label={t('pomodoro.aria.lastNDays', { n: range === '7d' ? 7 : 30 })}
         >
           <div className="flex items-center justify-between gap-2">
             <div
               className="inline-flex rounded-full overflow-hidden border border-current/20"
               role="group"
-              aria-label="Range"
+              aria-label={t('pomodoro.aria.range')}
             >
               {(['7d', '30d'] as const).map((r) => (
                 <button
@@ -530,8 +531,12 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
             </div>
             <div className="opacity-70 text-right tabular-nums" data-headline>
               {range === '7d'
-                ? `${total7} min · ${daysFocused7}d focused · best ${bestDay7}m`
-                : `${total30} min · best ${bestDay30}m`}
+                ? t('pomodoro.headline7d', {
+                    total: total7,
+                    days: daysFocused7,
+                    best: bestDay7,
+                  })
+                : t('pomodoro.headline30d', { total: total30, best: bestDay30 })}
             </div>
           </div>
           <div
@@ -557,7 +562,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
                       height: `${(d.minutes / seriesMax) * 100}%`,
                       minHeight: d.minutes > 0 ? 2 : 0,
                     }}
-                    title={`${d.minutes}m · ${d.cycles} cycle${d.cycles === 1 ? '' : 's'}`}
+                    title={t('pomodoro.cell.title', { m: d.minutes, c: d.cycles })}
                     data-minutes={d.minutes}
                     data-cycles={d.cycles}
                     data-today={d.isToday ? '1' : '0'}
@@ -593,7 +598,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
                 }`}
                 data-achievement="streak"
               >
-                🔥 {streak}d streak
+                {t('pomodoro.achievement.streak', { n: streak })}
               </span>
             )}
             {longestStreak > streak && longestStreak >= 3 && (
@@ -603,7 +608,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
                 }`}
                 data-achievement="best-streak"
               >
-                🏆 best {longestStreak}d
+                {t('pomodoro.achievement.bestStreak', { n: longestStreak })}
               </span>
             )}
             {bestDay7 >= 90 && (
@@ -613,7 +618,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
                 }`}
                 data-achievement="best-day"
               >
-                ⭐ best day {bestDay7}m
+                {t('pomodoro.achievement.bestDay', { n: bestDay7 })}
               </span>
             )}
             {cyclesToday >= 4 && (
@@ -623,7 +628,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
                 }`}
                 data-achievement="cycles-today"
               >
-                📅 {cyclesToday} cycles today
+                {t('pomodoro.achievement.cyclesToday', { n: cyclesToday })}
               </span>
             )}
             {total7 >= 600 && (
@@ -633,7 +638,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
                 }`}
                 data-achievement="10h-week"
               >
-                💪 10h this week
+                {t('pomodoro.achievement.10hWeek')}
               </span>
             )}
           </div>
@@ -646,12 +651,13 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
             className={`text-[10px] ${labelClass} hover:opacity-80 self-start`}
             aria-expanded={showHeatmap}
           >
-            {showHeatmap ? '▾ heatmap' : '▸ heatmap'} · {hoursFocused7}h focused
+            {showHeatmap ? `▾ ${t('pomodoro.heatmapToggle')}` : `▸ ${t('pomodoro.heatmapToggle')}`} ·{' '}
+            {t('pomodoro.heatmapSummary', { h: hoursFocused7 })}
           </button>
           {showHeatmap && (
             <div
               className="w-full flex flex-col gap-0.5"
-              aria-label="7 days × 24 hours focus heatmap"
+              aria-label={t('pomodoro.aria.heatmap')}
             >
               {/* Hour ticks (above) — 0, 6, 12, 18, 23. Spans the
                   first 24 columns; we use a 1fr grid with the first
@@ -695,7 +701,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
                 </div>
               ))}
               <div className={`text-[9px] opacity-50 mt-0.5 ${labelClass}`}>
-                opacity ∝ minutes · today has ring
+                {t('pomodoro.heatmapHint')}
               </div>
             </div>
           )}

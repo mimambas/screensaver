@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Cloud, Sun, CloudRain, CloudSnow, CloudLightning, Wind, Droplets, Eye, Gauge, RefreshCw, MapPin } from 'lucide-react';
 import type { ThemeName } from './clock-constants';
+import { useT } from '../i18n';
 
 interface WeatherData {
   temp: number;
@@ -103,6 +104,7 @@ export function Weather({
   city?: string;
   refreshMs?: number;
 }) {
+  const t = useT();
   const [data, setData] = useState<WeatherData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -208,7 +210,7 @@ export function Weather({
           type="button"
           onClick={() => void load()}
           className={`p-1 rounded-full transition-colors ${theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}
-          aria-label="Retry weather"
+          aria-label={t('weather.retry')}
         >
           <RefreshCw className="w-3 h-3" />
         </button>
@@ -217,7 +219,7 @@ export function Weather({
   }
 
   if (!data) {
-    return <div className={`text-sm ${labelClass}`}>Loading weather for {city}…</div>;
+    return <div className={`text-sm ${labelClass}`}>{t('weather.loading', { city })}</div>;
   }
 
   const Icon = ICONS[data.code] || Sun;

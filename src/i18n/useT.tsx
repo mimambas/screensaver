@@ -11,7 +11,7 @@
 // 'id', else 'en'. This way Indonesian users get Indonesian
 // automatically the first time they open the app.
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { catalog, type Locale } from './catalog';
 
@@ -38,6 +38,9 @@ interface I18nContextValue {
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);
+// Re-exported so useT-helper can read from the same context. (TSX
+// files can't be imported by .ts without re-exporting the value.)
+export { I18nContext };
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(detectInitialLocale);
@@ -76,27 +79,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
 
-export function useT(): TFunction {
-  const ctx = useContext(I18nContext);
-  if (!ctx) {
-    // Outside provider: return English-only fallback so tests / SSR
-    // / previews still work. In practice the provider wraps the
-    // whole app, so this branch is only hit in tests that forget.
-    return (key, params) => {
-      const entry = catalog[key];
-      const raw = (entry && entry.en) || key;
-      if (!params) return raw;
-      return raw.replace(/\{(\w+)\}/g, (_m, name) => {
-        const v = params[name];
-        return v == null ? `{${name}}` : String(v);
-      });
-    };
-  }
-  return ctx.t;
-}
-
-export function useLocale(): [Locale, (l: Locale) => void] {
-  const ctx = useContext(I18nContext);
-  if (!ctx) return ['en', () => {}];
-  return [ctx.locale, ctx.setLocale];
-}
+// useT and useLocale live in useT-helper.ts so this file (a .tsx
+// component file) can keep "only exports components" semantics
+// for react-refresh fast refresh. Re-exported from index.ts.
+/* eslint-disable react-refresh/only-export-components */
+export { useT, useLocale } from './useT-helper';

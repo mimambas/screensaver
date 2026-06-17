@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Play, Pause, RotateCcw, Flag } from 'lucide-react';
+import { useT } from '../i18n';
 
 function formatTime(ms: number) {
   const total = Math.max(0, Math.floor(ms / 10));
@@ -10,6 +11,7 @@ function formatTime(ms: number) {
 }
 
 export function Stopwatch({ theme = 'dark' }: { theme?: 'dark' | 'light' | 'claude' }) {
+  const t = useT();
   const [ms, setMs] = useState(0);
   const [running, setRunning] = useState(false);
   const [laps, setLaps] = useState<number[]>([]);
@@ -58,14 +60,14 @@ export function Stopwatch({ theme = 'dark' }: { theme?: 'dark' | 'light' | 'clau
       <div className="flex gap-2">
         <button
           onClick={() => setRunning((r) => !r)}
-          aria-label={running ? 'Pause' : 'Start'}
+          aria-label={running ? t('stopwatch.pause') : t('stopwatch.start')}
           className={`p-2 rounded-full transition-colors ${btnHover}`}
         >
           {running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
         </button>
         <button
           onClick={reset}
-          aria-label="Reset"
+          aria-label={t('common.reset')}
           className={`p-2 rounded-full transition-colors ${btnHover}`}
         >
           <RotateCcw className="w-4 h-4" />
@@ -73,7 +75,7 @@ export function Stopwatch({ theme = 'dark' }: { theme?: 'dark' | 'light' | 'clau
         <button
           onClick={lap}
           disabled={!running && ms === 0}
-          aria-label="Record lap"
+          aria-label={t('stopwatch.recordLap')}
           className={`p-2 rounded-full transition-colors disabled:opacity-30 ${btnHover}`}
         >
           <Flag className="w-4 h-4" />

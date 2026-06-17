@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Moon, X } from 'lucide-react';
 import type { ThemeName } from './clock-constants';
 import type { SleepTimerHandle } from './use-sleep-timer';
+import { useT } from '../i18n';
 
 // --------------------------------------------------------------------------
 // SleepTimerOverlay — full-screen black veil with "Tap to wake" prompt.
@@ -15,6 +16,7 @@ export function SleepTimerOverlay({
   show: boolean;
   onWake: () => void;
 }) {
+  const t = useT();
   const [opacity, setOpacity] = useState(0);
 
   useEffect(() => {
@@ -48,7 +50,7 @@ export function SleepTimerOverlay({
           onWake();
         }
       }}
-      aria-label="Tap to wake"
+      aria-label={t('sleep.tapToWake')}
       className="fixed inset-0 z-50 bg-black cursor-pointer flex items-center justify-center transition-opacity"
       style={{
         opacity,
@@ -57,7 +59,7 @@ export function SleepTimerOverlay({
     >
       <div className="text-white/30 text-sm flex flex-col items-center gap-2">
         <Moon className="w-8 h-8" />
-        <div>Tap anywhere to wake</div>
+        <div>{t('sleep.tapAnywhereToWake')}</div>
       </div>
     </div>
   );

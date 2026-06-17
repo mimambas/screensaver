@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { ThemeName } from './clock-constants';
+import { useT } from '../i18n';
 
 export function Calendar({
   theme = 'dark',
@@ -13,6 +14,7 @@ export function Calendar({
   theme?: ThemeName;
   locale?: string;
 }) {
+  const t = useT();
   const [now, setNow] = useState(() => new Date());
   const [view, setView] = useState(() => {
     const d = new Date();
@@ -111,7 +113,7 @@ export function Calendar({
             const d = new Date(view.year, view.month - 1, 1);
             setView({ year: d.getFullYear(), month: d.getMonth() });
           }}
-          aria-label="Previous month"
+          aria-label={t('calendar.prevMonth')}
           className={`p-1 rounded ${hover}`}
         >
           <ChevronLeft className="w-3 h-3" />
@@ -123,7 +125,7 @@ export function Calendar({
             const d = new Date(view.year, view.month + 1, 1);
             setView({ year: d.getFullYear(), month: d.getMonth() });
           }}
-          aria-label="Next month"
+          aria-label={t('calendar.nextMonth')}
           className={`p-1 rounded ${hover}`}
         >
           <ChevronRight className="w-3 h-3" />

@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Hourglass, Play, Pause, RotateCcw } from 'lucide-react';
 import { playChime } from './audio';
 import type { ThemeName } from './clock-constants';
+import { useT } from '../i18n';
 
 const STORAGE_KEY = 'screensaver.timer.v1';
 
@@ -51,6 +52,7 @@ function format(ms: number): { hh: string; mm: string; ss: string } {
 }
 
 export function Timer({ theme = 'dark' }: { theme?: ThemeName }) {
+  const t = useT();
   // Initial load from localStorage. We use the lazy useState init so
   // localStorage is read once at mount, not in an effect.
   const [{ totalMs, remainingMs }, setState] = useState(() => {
@@ -193,7 +195,7 @@ export function Timer({ theme = 'dark' }: { theme?: ThemeName }) {
                 type="button"
                 onClick={start}
                 disabled={remainingMs <= 0}
-                aria-label="Start timer"
+                aria-label={t('timer.start')}
                 className={`p-1.5 rounded ${remainingMs <= 0 ? 'opacity-30 cursor-not-allowed' : isDark ? 'hover:bg-white/10' : isClaude ? 'hover:bg-[#d4b896]/40' : 'hover:bg-black/10'}`}
               >
                 <Play className="w-3 h-3" />
@@ -202,7 +204,7 @@ export function Timer({ theme = 'dark' }: { theme?: ThemeName }) {
               <button
                 type="button"
                 onClick={() => setRunning(false)}
-                aria-label="Pause timer"
+                aria-label={t('timer.pause')}
                 className={`p-1.5 rounded ${isDark ? 'hover:bg-white/10' : isClaude ? 'hover:bg-[#d4b896]/40' : 'hover:bg-black/10'}`}
               >
                 <Pause className="w-3 h-3" />
@@ -211,7 +213,7 @@ export function Timer({ theme = 'dark' }: { theme?: ThemeName }) {
             <button
               type="button"
               onClick={() => reset()}
-              aria-label="Reset timer"
+              aria-label={t('timer.reset')}
               className={`p-1.5 rounded ${isDark ? 'hover:bg-white/10' : isClaude ? 'hover:bg-[#d4b896]/40' : 'hover:bg-black/10'}`}
             >
               <RotateCcw className="w-3 h-3" />

@@ -8,6 +8,7 @@ import { DEFAULT_CITIES } from './clock-constants';
 import type { ThemeName } from './clock-constants';
 import { loadCities, saveCities } from './use-world-cities';
 import type { WorldCity } from './use-world-cities';
+import { useT } from '../i18n';
 
 // re-export for backward-compat with any existing imports
 export type { WorldCity } from './use-world-cities';
@@ -22,6 +23,7 @@ function labelFromTz(tz: string): string {
 }
 
 export function CitiesManager({ theme = 'dark' }: { theme?: ThemeName }) {
+  const t = useT();
   const [cities, setCities] = useState<WorldCity[]>(loadCities);
   const [draft, setDraft] = useState('');
 
@@ -72,14 +74,14 @@ export function CitiesManager({ theme = 'dark' }: { theme?: ThemeName }) {
           onKeyDown={(e) => {
             if (e.key === 'Enter') add(draft);
           }}
-          placeholder="Add city (e.g. Asia/Singapore)"
+          placeholder={t('cities.addPlaceholder')}
           className={`flex-1 px-2 py-1 rounded text-[10px] outline-none ${inputClass} ${rowClass}`}
         />
         <button
           type="button"
           onClick={() => add(draft)}
           disabled={!draft.trim()}
-          aria-label="Add city"
+          aria-label={t('cities.addAria')}
           className={`p-1 rounded transition-colors ${
             !draft.trim() ? 'opacity-30 cursor-not-allowed' : rowClass
           }`}
@@ -88,7 +90,8 @@ export function CitiesManager({ theme = 'dark' }: { theme?: ThemeName }) {
         </button>
       </div>
       <div className={`text-[10px] ${hintClass}`}>
-        Enter an IANA timezone (e.g. <span className="font-mono">Asia/Singapore</span>) — display name auto-derived.
+        {t('settings.cities.hint')}
+        <span className="font-mono">Asia/Singapore</span>) — display name auto-derived.
       </div>
       <ul className="space-y-0.5" data-cities-list>
         {cities.map((c, i) => (
@@ -101,7 +104,7 @@ export function CitiesManager({ theme = 'dark' }: { theme?: ThemeName }) {
               type="text"
               value={c.name}
               onChange={(e) => rename(i, e.target.value)}
-              aria-label={`Rename ${c.tz}`}
+              aria-label={t('cities.renameAria', { tz: c.tz })}
               className={`flex-1 min-w-0 px-1 py-0.5 rounded text-[10px] outline-none ${inputClass}`}
             />
             <span className={`text-[9px] font-mono opacity-50 ${hintClass}`} title={c.tz}>
@@ -110,7 +113,7 @@ export function CitiesManager({ theme = 'dark' }: { theme?: ThemeName }) {
             <button
               type="button"
               onClick={() => remove(i)}
-              aria-label={`Remove ${c.tz}`}
+              aria-label={t('cities.removeAria', { tz: c.tz })}
               data-remove-city={c.tz}
               className="p-0.5 opacity-50 hover:opacity-100"
             >
@@ -131,7 +134,7 @@ export function CitiesManager({ theme = 'dark' }: { theme?: ThemeName }) {
               : 'bg-black/5 hover:bg-black/15 text-black/60'
           }`}
         >
-          Reset to defaults
+          {t('settings.cities.reset')}
         </button>
       )}
     </div>
