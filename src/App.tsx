@@ -1,97 +1,101 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Maximize2, Minimize2, Settings, Minus, Plus } from 'lucide-react';
+// App.tsx — top-level orchestrator. Owns the persisted-settings state
+// + the lifecycle effects (autoTheme, fullscreen, idle, PWA mode).
+// Everything else — settings panel, layouts, widgets — reads from
+// `useSettings()`. This file is intentionally short; the body
+// background, vignette, and wallpaper layer are all that's left
+// in JSX besides the layouts and chrome.
+
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Maximize2, Minimize2, Settings } from 'lucide-react';
 import {
-  DigitalClock,
-  WorldClock,
-  DateDisplay,
-} from './widgets/Clock';
-import {
-  CLOCK_STYLES,
-  CLOCK_COLORS,
-  CLOCK_SIZES,
   CLOCK_SIZE_PRESETS,
   clampClockSize,
-  normalizeHex,
-  type ClockStyle,
   type ClockColor,
   type ClockSize,
+  type ClockStyle,
   type ThemeName,
 } from './widgets/clock-constants';
-import { THEMES, THEME_NAMES } from './widgets/theme-presets';
-import { Pomodoro } from './widgets/Pomodoro';
-import { Stopwatch } from './widgets/Stopwatch';
-import { Weather } from './widgets/Weather';
-import { Quotes } from './widgets/Quotes';
-import { DayProgress } from './widgets/DayProgress';
+import { THEMES } from './widgets/theme-presets';
 import { useSleepTimer } from './widgets/use-sleep-timer';
 import { SleepTimerOverlay, SleepTimerChip } from './widgets/SleepTimer';
-import { AlarmList } from './widgets/AlarmList';
-import { Timer } from './widgets/Timer';
 import { Wallpaper } from './widgets/Wallpaper';
-import { CitiesManager } from './widgets/WorldClockCities';
 import { useWorldCities } from './widgets/use-world-cities';
-import { useT, useLocale } from './i18n';
-import { Calendar } from './widgets/Calendar';
-import { Draggable } from './widgets/Draggable';
 import { useAmbient } from './widgets/Ambient';
-import { Breathing } from './widgets/Breathing';
-import { Affirmation } from './widgets/Affirmation';
-
-type Layout = 'classic' | 'split' | 'minimal';
-
-// Back-compat helpers. New code should look up the theme via
-// `THEMES[t]` directly so a theme can be added without touching
-// every call site.
-const isDark = (t: ThemeName) => THEMES[t].isDark;
-const isClaude = (t: ThemeName) => t === 'claude';
+import { useT, useLocale } from './i18n';
+import {
+  SettingsContext,
+  type SettingsContextValue,
+  type Layout,
+  type WallpaperId,
+  type AmbientId,
+} from './widgets/settings-context';
+import { isDark, isClaude } from './widgets/theme-helpers';
+import { SettingsPanel } from './widgets/SettingsPanel';
+import { LayoutClassic } from './widgets/LayoutClassic';
+import { LayoutSplit } from './widgets/LayoutSplit';
+import { LayoutMinimal } from './widgets/LayoutMinimal';
 
 const SETTINGS_KEY = 'screensaver.settings.v2';
 
-type PersistedSettings = {
-  layout: Layout;
-  theme: ThemeName;
-  clockStyle: ClockStyle;
-  clockColor: ClockColor;
-  clockSize: ClockSize;
-  showDate: boolean;
-  showCalendar: boolean;
-  dateLocale: string;
-  dateFormat: 'long' | 'short' | 'iso';
-  showWorldClock: boolean;
-  showQuote: boolean;
-  showWeather: boolean;
-  showStopwatch: boolean;
-  showPomodoro: boolean;
-  showDayProgress: boolean;
-  showAlarms: boolean;
-  showTimer: boolean;
-  showBreathing: boolean;
-  showAffirmation: boolean;
-  flipSound: boolean;
-  /** HEX string when clockColor === 'custom'. */
-  customColor: string;
-  city: string;
-  /** Ambient background sound: 'none' | 'rain' | 'forest' | 'white'. */
-  ambient: 'none' | 'rain' | 'forest' | 'white';
-  /** 0..1. */
-  ambientVolume: number;
-  /** Auto-switch theme by local hour (6-18 = light, else dark). */
-  autoTheme: boolean;
-  /** Auto-launch into fullscreen after N minutes idle. */
-  autoLaunch: boolean;
-  autoLaunchMs: number;
-  /** Animated background wallpaper style. 'none' = no wallpaper. */
-  wallpaper: 'none' | 'aurora' | 'stars' | 'rain' | 'geometric' | 'mesh' | 'fireflies';
-  /** Wallpaper intensity (0..1). */
-  wallpaperIntensity: number;
-};
+type PersistedSettings = Omit<
+  SettingsContextValue,
+  | keyof import('./widgets/settings-context').SettingsActions
+  | 'worldCities'
+  | 'locale'
+  | 'setLocale'
+  | 'setLayout'
+  | 'setTheme'
+  | 'setAutoTheme'
+  | 'setWallpaper'
+  | 'setWallpaperIntensity'
+  | 'setAmbient'
+  | 'setAmbientVolume'
+  | 'setClockStyle'
+  | 'setClockColor'
+  | 'setCustomColor'
+  | 'setClockSize'
+  | 'adjustClockSize'
+  | 'setFlipSound'
+  | 'setCity'
+  | 'setDateLocale'
+  | 'setDateFormat'
+  | 'setAutoLaunch'
+  | 'setAutoLaunchMs'
+  | 'setShowDate'
+  | 'setShowCalendar'
+  | 'setShowWorldClock'
+  | 'setShowQuote'
+  | 'setShowWeather'
+  | 'setShowStopwatch'
+  | 'setShowPomodoro'
+  | 'setShowDayProgress'
+  | 'setShowAlarms'
+  | 'setShowTimer'
+  | 'setShowBreathing'
+  | 'setShowAffirmation'
+  | 'toggleShow'
+  | 'turnOffAll'
+  | 'resetToDefaults'
+>;
 
 const DEFAULTS: PersistedSettings = {
   layout: 'classic',
   theme: 'dark',
+  autoTheme: false,
+  wallpaper: 'aurora',
+  wallpaperIntensity: 0.4,
+  ambient: 'none',
+  ambientVolume: 0.3,
   clockStyle: 'digital',
   clockColor: 'white',
+  customColor: '#a78bfa',
   clockSize: CLOCK_SIZE_PRESETS.default,
+  flipSound: true,
+  city: 'Jakarta',
+  dateLocale: 'en-US',
+  dateFormat: 'long',
+  autoLaunch: false,
+  autoLaunchMs: 5 * 60_000,
   showDate: true,
   showCalendar: false,
   showWorldClock: true,
@@ -104,18 +108,6 @@ const DEFAULTS: PersistedSettings = {
   showTimer: true,
   showBreathing: false,
   showAffirmation: false,
-  flipSound: true,
-  customColor: '#a78bfa',
-  city: 'Jakarta',
-  autoTheme: false,
-  dateLocale: 'en-US',
-  dateFormat: 'long' as 'long' | 'short' | 'iso',
-  autoLaunch: false,
-  autoLaunchMs: 5 * 60_000, // 5 minutes
-  wallpaper: 'aurora' as 'none' | 'aurora' | 'stars' | 'rain' | 'geometric' | 'mesh' | 'fireflies',
-  wallpaperIntensity: 0.4,
-  ambient: 'none' as 'none' | 'rain' | 'forest' | 'white',
-  ambientVolume: 0.3,
 };
 
 function loadSettings(): PersistedSettings {
@@ -132,30 +124,171 @@ function loadSettings(): PersistedSettings {
 
 export default function App() {
   const initial = loadSettings();
-
+  // ── Persisted state (the only useState calls in this file) ──────
   const [layout, setLayout] = useState<Layout>(initial.layout);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showQuote, setShowQuote] = useState(initial.showQuote);
-  const [showWorldClock, setShowWorldClock] = useState(initial.showWorldClock);
-  const [showDate, setShowDate] = useState(initial.showDate);
-  const [showCalendar, setShowCalendar] = useState(initial.showCalendar);
+  const [theme, setTheme] = useState<ThemeName>(initial.theme);
+  const [autoTheme, setAutoTheme] = useState<boolean>(initial.autoTheme);
+  const [wallpaper, setWallpaper] = useState<WallpaperId>(initial.wallpaper);
+  const [wallpaperIntensity, setWallpaperIntensity] = useState<number>(initial.wallpaperIntensity);
+  const [ambient, setAmbient] = useState<AmbientId>(initial.ambient);
+  const [ambientVolume, setAmbientVolume] = useState<number>(initial.ambientVolume);
+  const [clockStyle, setClockStyle] = useState<ClockStyle>(initial.clockStyle);
+  const [clockColor, setClockColor] = useState<ClockColor>(initial.clockColor);
+  const [customColor, setCustomColor] = useState<string>(initial.customColor);
+  const [clockSize, setClockSizeRaw] = useState<ClockSize>(clampClockSize(initial.clockSize));
+  const setClockSize = useCallback((v: ClockSize) => {
+    setClockSizeRaw(clampClockSize(v));
+  }, []);
+  const adjustClockSize = useCallback((delta: number) => {
+    setClockSizeRaw((cur) => clampClockSize((cur as number) + delta));
+  }, []);
+  const [flipSound, setFlipSound] = useState(initial.flipSound);
+  const [city, setCity] = useState<string>(initial.city);
   const [dateLocale, setDateLocale] = useState<string>(initial.dateLocale);
   const [dateFormat, setDateFormat] = useState<'long' | 'short' | 'iso'>(initial.dateFormat);
+  const [autoLaunch, setAutoLaunch] = useState<boolean>(initial.autoLaunch);
+  const [autoLaunchMs, setAutoLaunchMs] = useState<number>(initial.autoLaunchMs);
+  const [showDate, setShowDate] = useState(initial.showDate);
+  const [showCalendar, setShowCalendar] = useState(initial.showCalendar);
+  const [showWorldClock, setShowWorldClock] = useState(initial.showWorldClock);
+  const [showQuote, setShowQuote] = useState(initial.showQuote);
   const [showWeather, setShowWeather] = useState(initial.showWeather);
   const [showStopwatch, setShowStopwatch] = useState(initial.showStopwatch);
   const [showPomodoro, setShowPomodoro] = useState(initial.showPomodoro);
   const [showDayProgress, setShowDayProgress] = useState(initial.showDayProgress);
-  const [showTimer, setShowTimer] = useState(initial.showTimer);
   const [showAlarms, setShowAlarms] = useState(initial.showAlarms);
+  const [showTimer, setShowTimer] = useState(initial.showTimer);
   const [showBreathing, setShowBreathing] = useState(initial.showBreathing);
   const [showAffirmation, setShowAffirmation] = useState(initial.showAffirmation);
-  const [autoTheme, setAutoTheme] = useState<boolean>(initial.autoTheme);
-  const [theme, setTheme] = useState<ThemeName>(initial.theme);
-  // When autoTheme is on, override the user-picked theme based on
-  // local hour. We re-evaluate on a 1-minute interval so the watch
-  // switches theme around sunrise/sunset without the user lifting
-  // a finger. The manual theme picker stays usable in the UI but
-  // its effect is masked while autoTheme is on.
+
+  // ── Non-persisted UI state ──────────────────────────────────────
+  const [showSettings, setShowSettings] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  // When launched as an installed PWA the browser chrome is already
+  // gone — fullscreen toggle is a no-op. Detect via display-mode
+  // media query (true on iOS home-screen launches and Android TWA).
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [uiVisible, setUiVisible] = useState(true);
+
+  const t = useT();
+  const [locale, setLocale] = useLocale();
+  const worldCities = useWorldCities();
+  const idleTimer = useRef<number | null>(null);
+  const autoLaunchTimer = useRef<number | null>(null);
+  const sleep = useSleepTimer();
+
+  // ── Aggregate bulk actions (memoized so identity is stable) ────
+  const turnOffAll = useCallback(() => {
+    setShowDate(false);
+    setShowCalendar(false);
+    setShowWorldClock(false);
+    setShowQuote(false);
+    setShowWeather(false);
+    setShowStopwatch(false);
+    setShowPomodoro(false);
+    setShowDayProgress(false);
+    setShowAlarms(false);
+    setShowTimer(false);
+    setShowBreathing(false);
+    setShowAffirmation(false);
+  }, []);
+
+  const resetToDefaults = useCallback(() => {
+    setLayout(DEFAULTS.layout);
+    setTheme(DEFAULTS.theme);
+    setAutoTheme(DEFAULTS.autoTheme);
+    setWallpaper(DEFAULTS.wallpaper);
+    setWallpaperIntensity(DEFAULTS.wallpaperIntensity);
+    setAmbient(DEFAULTS.ambient);
+    setAmbientVolume(DEFAULTS.ambientVolume);
+    setClockStyle(DEFAULTS.clockStyle);
+    setClockColor(DEFAULTS.clockColor);
+    setCustomColor(DEFAULTS.customColor);
+    setClockSize(DEFAULTS.clockSize);
+    setFlipSound(DEFAULTS.flipSound);
+    setCity(DEFAULTS.city);
+    setDateLocale(DEFAULTS.dateLocale);
+    setDateFormat(DEFAULTS.dateFormat);
+    setAutoLaunch(DEFAULTS.autoLaunch);
+    setAutoLaunchMs(DEFAULTS.autoLaunchMs);
+    setShowDate(DEFAULTS.showDate);
+    setShowCalendar(DEFAULTS.showCalendar);
+    setShowWorldClock(DEFAULTS.showWorldClock);
+    setShowQuote(DEFAULTS.showQuote);
+    setShowWeather(DEFAULTS.showWeather);
+    setShowStopwatch(DEFAULTS.showStopwatch);
+    setShowPomodoro(DEFAULTS.showPomodoro);
+    setShowDayProgress(DEFAULTS.showDayProgress);
+    setShowAlarms(DEFAULTS.showAlarms);
+    setShowTimer(DEFAULTS.showTimer);
+    setShowBreathing(DEFAULTS.showBreathing);
+    setShowAffirmation(DEFAULTS.showAffirmation);
+  // setClockSize is intentionally excluded — it only forwards to
+  // setClockSizeRaw and would just add noise to the deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Context value (stable references where possible) ────────────
+  const ctxValue = useMemo<SettingsContextValue>(() => ({
+    layout, theme, autoTheme,
+    wallpaper, wallpaperIntensity, ambient, ambientVolume,
+    clockStyle, clockColor, customColor, clockSize, flipSound,
+    city, dateLocale, dateFormat, autoLaunch, autoLaunchMs,
+    showDate, showCalendar, showWorldClock, showQuote, showWeather,
+    showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
+    showBreathing, showAffirmation,
+    worldCities,
+    locale,
+    setLocale,
+    setLayout, setTheme, setAutoTheme,
+    setWallpaper, setWallpaperIntensity, setAmbient, setAmbientVolume,
+    setClockStyle, setClockColor, setCustomColor, setClockSize, adjustClockSize,
+    setFlipSound, setCity, setDateLocale, setDateFormat, setAutoLaunch, setAutoLaunchMs,
+    setShowDate, setShowCalendar, setShowWorldClock, setShowQuote, setShowWeather,
+    setShowStopwatch, setShowPomodoro, setShowDayProgress, setShowAlarms, setShowTimer,
+    setShowBreathing, setShowAffirmation,
+    toggleShow: () => {},
+    turnOffAll,
+    resetToDefaults,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [
+    layout, theme, autoTheme,
+    wallpaper, wallpaperIntensity, ambient, ambientVolume,
+    clockStyle, clockColor, customColor, clockSize, flipSound,
+    city, dateLocale, dateFormat, autoLaunch, autoLaunchMs,
+    showDate, showCalendar, showWorldClock, showQuote, showWeather,
+    showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
+    showBreathing, showAffirmation,
+    worldCities, locale, turnOffAll, resetToDefaults,
+  ]);
+
+  // ── Persist to localStorage whenever settings change ────────────
+  useEffect(() => {
+    try {
+      const snap: PersistedSettings = {
+        layout, theme, autoTheme,
+        wallpaper, wallpaperIntensity, ambient, ambientVolume,
+        clockStyle, clockColor, customColor, clockSize, flipSound,
+        city, dateLocale, dateFormat, autoLaunch, autoLaunchMs,
+        showDate, showCalendar, showWorldClock, showQuote, showWeather,
+        showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
+        showBreathing, showAffirmation,
+      };
+      window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(snap));
+    } catch {
+      // localStorage may be unavailable (private mode, quota); silent fail
+    }
+  }, [
+    layout, theme, autoTheme,
+    wallpaper, wallpaperIntensity, ambient, ambientVolume,
+    clockStyle, clockColor, customColor, clockSize, flipSound,
+    city, dateLocale, dateFormat, autoLaunch, autoLaunchMs,
+    showDate, showCalendar, showWorldClock, showQuote, showWeather,
+    showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
+    showBreathing, showAffirmation,
+  ]);
+
+  // ── Auto-theme: switch to light/dark based on local hour ────────
   useEffect(() => {
     if (!autoTheme) return;
     const pick = () => {
@@ -166,68 +299,8 @@ export default function App() {
     const id = window.setInterval(pick, 60_000);
     return () => window.clearInterval(id);
   }, [autoTheme]);
-  const [clockStyle, setClockStyle] = useState<ClockStyle>(initial.clockStyle);
-  const [clockColor, setClockColor] = useState<ClockColor>(initial.clockColor);
-  const [customColor, setCustomColor] = useState<string>(initial.customColor);
-  const [clockSize, setClockSizeRaw] = useState<ClockSize>(clampClockSize(initial.clockSize));
-  // Clamp on every setter so persisted/manual values can't escape the range.
-  const setClockSize = useCallback((v: ClockSize) => {
-    setClockSizeRaw(clampClockSize(v));
-  }, []);
-  const adjustClockSize = useCallback((delta: number) => {
-    setClockSizeRaw((cur) => clampClockSize((cur as number) + delta));
-  }, []);
-  const [flipSound, setFlipSound] = useState(initial.flipSound);
-  const [city, setCity] = useState<string>(initial.city);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  // When launched as an installed PWA the browser chrome is already
-  // gone — fullscreen toggle is a no-op. Detect via display-mode media
-  // query (true on iOS home-screen launches and Android TWA).
-  const [isStandalone, setIsStandalone] = useState(false);
-  const [uiVisible, setUiVisible] = useState(true);
-  const [autoLaunch, setAutoLaunch] = useState<boolean>(initial.autoLaunch);
-  const [autoLaunchMs, setAutoLaunchMs] = useState<number>(initial.autoLaunchMs);
-  const [wallpaper, setWallpaper] = useState<'none' | 'aurora' | 'stars' | 'rain' | 'geometric' | 'mesh' | 'fireflies'>(initial.wallpaper);
-  const [wallpaperIntensity, setWallpaperIntensity] = useState<number>(initial.wallpaperIntensity);
-  const [ambient, setAmbient] = useState<'none' | 'rain' | 'forest' | 'white'>(initial.ambient);
-  const [ambientVolume, setAmbientVolume] = useState<number>(initial.ambientVolume);
-  const t = useT();
-  const [locale, setLocale] = useLocale();
-  // WorldClock shows the user's custom city list (default 5 if they
-  // haven't added/removed any). The CitiesManager in the settings
-  // panel and the live WorldClock widget both read/write the same
-  // localStorage key, kept in sync via the 'storage' event inside
-  // the hook.
-  const worldCities = useWorldCities();
-  const idleTimer = useRef<number | null>(null);
-  const autoLaunchTimer = useRef<number | null>(null);
-  const sleep = useSleepTimer();
 
-  // Persist settings to localStorage whenever they change.
-  useEffect(() => {
-    try {
-      const snap: PersistedSettings = {
-        layout, theme, clockStyle, clockColor, clockSize,
-        customColor,
-        showDate, showCalendar, showWorldClock, showQuote, showWeather,
-        showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer, showBreathing, showAffirmation,
-        flipSound, city, autoTheme, dateLocale, dateFormat,
-        autoLaunch, autoLaunchMs, wallpaper, wallpaperIntensity,
-        ambient, ambientVolume,
-      };
-      window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(snap));
-    } catch {
-      // localStorage may be unavailable (private mode, quota); silent fail
-    }
-  }, [
-    layout, theme, clockStyle, clockColor, clockSize, customColor,
-    showDate, showCalendar, showWorldClock, showQuote, showWeather,
-    showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer, showBreathing, showAffirmation,
-    flipSound, city, autoTheme, dateLocale, dateFormat,
-    autoLaunch, autoLaunchMs, wallpaper, wallpaperIntensity,
-    ambient, ambientVolume,
-  ]);
-
+  // ── Fullscreen toggle ───────────────────────────────────────────
   const toggleFullscreen = useCallback(async () => {
     try {
       if (!document.fullscreenElement) {
@@ -242,7 +315,24 @@ export default function App() {
     }
   }, []);
 
-  // Auto-hide cursor + control buttons
+  // Sync fullscreen state when user exits via Esc / browser chrome.
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
+  // Detect installed-PWA mode. Updates live if the user installs
+  // while the tab is open.
+  useEffect(() => {
+    const mq = window.matchMedia('(display-mode: standalone)');
+    const update = () => setIsStandalone(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
+  // ── Auto-hide cursor + control buttons after 3s idle ────────────
   useEffect(() => {
     const reset = () => {
       if (sleep.isAsleep) return; // never show UI while sleeping
@@ -258,7 +348,6 @@ export default function App() {
         // goes fullscreen on its own, wakes on any input.
         if (autoLaunch && !document.fullscreenElement) {
           autoLaunchTimer.current = window.setTimeout(() => {
-            // Re-check inside the timer in case state changed.
             if (autoLaunch && !document.fullscreenElement) {
               void toggleFullscreen();
             }
@@ -279,24 +368,7 @@ export default function App() {
     };
   }, [sleep.isAsleep, autoLaunch, autoLaunchMs, toggleFullscreen]);
 
-  // Sync fullscreen state when user exits via Esc / browser chrome
-  useEffect(() => {
-    const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
-    document.addEventListener('fullscreenchange', onChange);
-    return () => document.removeEventListener('fullscreenchange', onChange);
-  }, []);
-
-  // Detect installed-PWA mode (iOS home screen, Android TWA, desktop
-  // installed). Updates live if the user installs while the tab is open.
-  useEffect(() => {
-    const mq = window.matchMedia('(display-mode: standalone)');
-    const update = () => setIsStandalone(mq.matches);
-    update();
-    mq.addEventListener('change', update);
-    return () => mq.removeEventListener('change', update);
-  }, []);
-
-  // Keyboard shortcuts — disabled while typing in inputs
+  // ── Keyboard shortcuts — disabled while typing in inputs ────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -319,7 +391,6 @@ export default function App() {
           setShowSettings(false);
         }
       } else if (k === 'h') {
-        // Toggle UI hint — useful when taking screenshots
         setUiVisible((v) => {
           const next = !v;
           document.body.style.cursor = next ? 'default' : 'none';
@@ -331,69 +402,11 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [toggleFullscreen, sleep]);
 
-  const allWidgetsOff =
-    !showDate &&
-    !showWorldClock &&
-    !showQuote &&
-    !showWeather &&
-    !showStopwatch &&
-    !showPomodoro &&
-    !showDayProgress &&
-    !showAlarms &&
-    !showBreathing &&
-    !showAffirmation;
-
-  const turnOffAll = () => {
-    setShowDate(false);
-    setShowWorldClock(false);
-    setShowQuote(false);
-    setShowWeather(false);
-    setShowStopwatch(false);
-    setShowPomodoro(false);
-    setShowDayProgress(false);
-    setShowAlarms(false);
-    setShowTimer(false);
-    setShowBreathing(false);
-    setShowAffirmation(false);
-  };
-
-  const resetSettings = () => {
-    setLayout(DEFAULTS.layout);
-    setTheme(DEFAULTS.theme);
-    setClockStyle(DEFAULTS.clockStyle);
-    setClockColor(DEFAULTS.clockColor);
-    setClockSize(DEFAULTS.clockSize);
-    setShowDate(DEFAULTS.showDate);
-    setShowCalendar(DEFAULTS.showCalendar);
-    setDateLocale(DEFAULTS.dateLocale);
-    setDateFormat(DEFAULTS.dateFormat);
-    setShowWorldClock(DEFAULTS.showWorldClock);
-    setShowQuote(DEFAULTS.showQuote);
-    setShowWeather(DEFAULTS.showWeather);
-    setShowStopwatch(DEFAULTS.showStopwatch);
-    setShowPomodoro(DEFAULTS.showPomodoro);
-    setShowDayProgress(DEFAULTS.showDayProgress);
-    setShowAlarms(DEFAULTS.showAlarms);
-    setShowTimer(DEFAULTS.showTimer);
-    setShowBreathing(DEFAULTS.showBreathing);
-    setShowAffirmation(DEFAULTS.showAffirmation);
-    setFlipSound(DEFAULTS.flipSound);
-    setCustomColor(DEFAULTS.customColor);
-    setCity(DEFAULTS.city);
-    setAutoTheme(DEFAULTS.autoTheme);
-    setAutoLaunch(DEFAULTS.autoLaunch);
-    setAutoLaunchMs(DEFAULTS.autoLaunchMs);
-    setWallpaper(DEFAULTS.wallpaper);
-    setWallpaperIntensity(DEFAULTS.wallpaperIntensity);
-    setAmbient(DEFAULTS.ambient);
-    setAmbientVolume(DEFAULTS.ambientVolume);
-  };
-
-  // While asleep, render nothing — black overlay handles the rest.
-  // Drive the ambient sound engine. Renders nothing. Must be called
-  // before any early returns (hooks rules).
+  // Drive ambient sound engine. Renders nothing. Called before any
+  // early returns (hooks rules).
   useAmbient(ambient, ambientVolume);
 
+  // While asleep, render nothing — black overlay handles the rest.
   if (sleep.isAsleep) {
     return <SleepTimerOverlay show onWake={sleep.wake} />;
   }
@@ -401,89 +414,103 @@ export default function App() {
   const palette = THEMES[theme];
 
   return (
-    <div
-      className={`min-h-screen w-screen relative overflow-hidden transition-[background-color,color] duration-700 ${palette.bodyClass}`}
-      style={
-        palette.bgColor
-          ? {
-              backgroundColor: palette.bgColor,
-              backgroundImage: palette.bgImage,
-              transition: palette.bgTransition,
-            }
-          : { transition: palette.bgTransition }
-      }
-    >
-      {/* Subtle radial vignette */}
+    <SettingsContext.Provider value={ctxValue}>
       <div
-        className="absolute inset-0 pointer-events-none"
-        style={{ background: palette.vignette }}
-      />
-
-      {/* Animated wallpaper layer — sits behind everything, fixed full-viewport.
-          Three styles: aurora (drifting color blobs), stars (twinkling field),
-          rain (falling streaks). Intensity scales the alpha; opacity
-          transition avoids jarring toggles. */}
-      {wallpaper !== 'none' && (
-        <Wallpaper
-          style={wallpaper}
-          intensity={wallpaperIntensity}
-          isDark={isDark(theme)}
+        className={`min-h-screen w-screen relative overflow-hidden transition-[background-color,color] duration-700 ${palette.bodyClass}`}
+        style={
+          palette.bgColor
+            ? {
+                backgroundColor: palette.bgColor,
+                backgroundImage: palette.bgImage,
+                transition: palette.bgTransition,
+              }
+            : { transition: palette.bgTransition }
+        }
+      >
+        {/* Subtle radial vignette */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: palette.vignette }}
         />
-      )}
 
-      {/* Sleep timer chip — top left */}
-      <div
-        className={`transition-opacity duration-500 ${
-          uiVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-      >
-        <SleepTimerChip handle={sleep} theme={theme} />
-      </div>
+        {/* Animated wallpaper layer */}
+        {wallpaper !== 'none' && (
+          <Wallpaper
+            style={wallpaper}
+            intensity={wallpaperIntensity}
+            isDark={isDark(theme)}
+          />
+        )}
 
-      {/* Controls — top right, fade on idle */}
-      <div
-        className={`absolute top-4 right-4 z-20 flex gap-2 transition-opacity duration-500 ${
-          uiVisible ? 'opacity-60 hover:opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-      >
-        <button
-          onClick={toggleFullscreen}
-          aria-label={t('control.toggleFullscreen')}
-          disabled={isStandalone}
-          className={`p-2 rounded-full transition-colors ${
-            isStandalone
-              ? 'opacity-30 cursor-default'
-              : isDark(theme)
-              ? 'bg-white/5 hover:bg-white/10'
-              : 'bg-black/5 hover:bg-black/10'
+        {/* Sleep timer chip — top left */}
+        <div
+          className={`transition-opacity duration-500 ${
+            uiVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
-          title={isStandalone ? t('control.fullscreenPwa') : t('control.fullscreen')}
         >
-          {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-        </button>
-        <button
-          onClick={() => setShowSettings(!showSettings)}
-          aria-label={t('control.toggleSettings')}
-          aria-expanded={showSettings}
-          className={`p-2 rounded-full transition-colors ${
-            isDark(theme) ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'
-          }`}
-          title={t('control.settings')}
-        >
-          <Settings className="w-4 h-4" />
-        </button>
-      </div>
+          <SleepTimerChip handle={sleep} theme={theme} />
+        </div>
 
-      {/* Keyboard shortcut hint — bottom center, fades with the rest of the UI. */}
-      <div
-        data-hint="shortcut-pill"
-        className={`absolute bottom-4 left-0 right-0 z-20 flex flex-col items-center gap-2 transition-opacity duration-500 ${
-          uiVisible ? 'opacity-50 hover:opacity-80' : 'opacity-0 pointer-events-none'
-        }`}
-      >
-        {clockStyle === 'casio' && (
+        {/* Controls — top right, fade on idle */}
+        <div
+          className={`absolute top-4 right-4 z-20 flex gap-2 transition-opacity duration-500 ${
+            uiVisible ? 'opacity-60 hover:opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+        >
+          <button
+            onClick={toggleFullscreen}
+            aria-label={t('control.toggleFullscreen')}
+            disabled={isStandalone}
+            className={`p-2 rounded-full transition-colors ${
+              isStandalone
+                ? 'opacity-30 cursor-default'
+                : isDark(theme)
+                ? 'bg-white/5 hover:bg-white/10'
+                : 'bg-black/5 hover:bg-black/10'
+            }`}
+            title={isStandalone ? t('control.fullscreenPwa') : t('control.fullscreen')}
+          >
+            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </button>
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            aria-label={t('control.toggleSettings')}
+            aria-expanded={showSettings}
+            className={`p-2 rounded-full transition-colors ${
+              isDark(theme) ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'
+            }`}
+            title={t('control.settings')}
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Keyboard shortcut hint — bottom center, fades with the rest of the UI. */}
+        <div
+          data-hint="shortcut-pill"
+          className={`absolute bottom-4 left-0 right-0 z-20 flex flex-col items-center gap-2 transition-opacity duration-500 ${
+            uiVisible ? 'opacity-50 hover:opacity-80' : 'opacity-0 pointer-events-none'
+          }`}
+        >
+          {clockStyle === 'casio' && (
+            <div
+              className={`text-[11px] tracking-wider tabular-nums flex items-center gap-3 px-3 py-1 rounded-full backdrop-blur-sm ${
+                isDark(theme)
+                  ? 'bg-white/5 text-white/70'
+                  : isClaude(theme)
+                  ? 'bg-[#3a2e1f]/10 text-[#3a2e1f]/70'
+                  : 'bg-black/5 text-black/70'
+              }`}
+            >
+              <span><kbd className="font-semibold">F</kbd> cycle menu</span>
+              <span className="opacity-40">·</span>
+              <span><kbd className="font-semibold">Q</kbd> edit / split</span>
+              <span className="opacity-40">·</span>
+              <span><kbd className="font-semibold">W</kbd>/<kbd className="font-semibold">E</kbd> start · hold 3s for CA510</span>
+            </div>
+          )}
           <div
-            className={`text-[11px] tracking-wider tabular-nums flex items-center gap-3 px-3 py-1 rounded-full backdrop-blur-sm ${
+            className={`text-[11px] tracking-wider tabular-nums flex items-center gap-3 px-3 py-1.5 rounded-full backdrop-blur-sm ${
               isDark(theme)
                 ? 'bg-white/5 text-white/70'
                 : isClaude(theme)
@@ -491,844 +518,24 @@ export default function App() {
                 : 'bg-black/5 text-black/70'
             }`}
           >
-            <span><kbd className="font-semibold">F</kbd> cycle menu</span>
+            <span><kbd className="font-semibold">F</kbd> {t('shortcuts.hint.fullscreen')}</span>
             <span className="opacity-40">·</span>
-            <span><kbd className="font-semibold">Q</kbd> edit / split</span>
+            <span><kbd className="font-semibold">S</kbd> {t('shortcuts.hint.settings')}</span>
             <span className="opacity-40">·</span>
-            <span><kbd className="font-semibold">W</kbd>/<kbd className="font-semibold">E</kbd> start · hold 3s for CA510</span>
+            <span><kbd className="font-semibold">H</kbd> {t('shortcuts.hint.hideUI')}</span>
+            <span className="opacity-40">·</span>
+            <span><kbd className="font-semibold">Esc</kbd> {t('shortcuts.hint.closeWake')}</span>
           </div>
-        )}
-        <div
-          className={`text-[11px] tracking-wider tabular-nums flex items-center gap-3 px-3 py-1.5 rounded-full backdrop-blur-sm ${
-            isDark(theme)
-              ? 'bg-white/5 text-white/70'
-              : isClaude(theme)
-              ? 'bg-[#3a2e1f]/10 text-[#3a2e1f]/70'
-              : 'bg-black/5 text-black/70'
-          }`}
-        >
-          <span><kbd className="font-semibold">F</kbd> {t('shortcuts.hint.fullscreen')}</span>
-          <span className="opacity-40">·</span>
-          <span><kbd className="font-semibold">S</kbd> {t('shortcuts.hint.settings')}</span>
-          <span className="opacity-40">·</span>
-          <span><kbd className="font-semibold">H</kbd> {t('shortcuts.hint.hideUI')}</span>
-          <span className="opacity-40">·</span>
-          <span><kbd className="font-semibold">Esc</kbd> {t('shortcuts.hint.closeWake')}</span>
         </div>
+
+        {/* Settings panel */}
+        {showSettings && <SettingsPanel />}
+
+        {/* Active layout */}
+        {layout === 'classic' && <LayoutClassic />}
+        {layout === 'split' && <LayoutSplit />}
+        {layout === 'minimal' && <LayoutMinimal />}
       </div>
-
-      {/* Settings panel */}
-      {showSettings && (
-        <div
-          role="dialog"
-          aria-label={t('settings.title')}
-          className={`absolute top-16 right-4 z-20 backdrop-blur-xl border rounded-2xl p-4 w-72 max-h-[calc(100vh-5rem)] overflow-y-auto ${
-            isDark(theme)
-              ? 'bg-black/60 border-white/20 text-white'
-              : isClaude(theme)
-              ? 'bg-[#faf6ef]/95 border-[#d4b896]/40 text-[#3a2e1f] shadow-2xl'
-              : 'bg-white/90 border-black/20 text-black shadow-2xl'
-          }`}
-        >
-          <div className="text-xs uppercase tracking-widest opacity-70 mb-3">{t('settings.section.layout')}</div>
-          <div className="space-y-1 mb-4">
-            {(['classic', 'split', 'minimal'] as Layout[]).map((l) => (
-              <button
-                key={l}
-                onClick={() => setLayout(l)}
-                aria-pressed={layout === l}
-                data-layout={l}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                  layout === l
-                    ? isDark(theme)
-                      ? 'bg-white/15 text-white'
-                      : isClaude(theme)
-                      ? 'bg-[#e8dcc4] text-[#3a2e1f]'
-                      : 'bg-black/15 text-black'
-                    : isDark(theme)
-                    ? 'hover:bg-white/10 text-white/80'
-                    : isClaude(theme)
-                    ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/80'
-                    : 'hover:bg-black/10 text-black/80'
-                }`}
-              >
-                {l === 'classic' && '⏰ Classic'}
-                {l === 'split' && '🪟 Split View'}
-                {l === 'minimal' && '🌑 Minimal'}
-              </button>
-            ))}
-          </div>
-
-          <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
-            {t('settings.section.language')}
-          </div>
-          <div className="grid grid-cols-2 gap-1 mb-4">
-            {(['en', 'id'] as const).map((lang) => (
-              <button
-                key={lang}
-                type="button"
-                onClick={() => setLocale(lang)}
-                aria-pressed={locale === lang}
-                data-lang={lang}
-                className={`px-2 py-2 rounded-lg text-xs transition-colors ${
-                  locale === lang
-                    ? isDark(theme)
-                      ? 'bg-white/15 text-white'
-                      : isClaude(theme)
-                      ? 'bg-[#d4b896] text-[#3a2e1f]'
-                      : 'bg-black/15 text-black'
-                    : isDark(theme)
-                    ? 'hover:bg-white/10 text-white/80'
-                    : isClaude(theme)
-                    ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/80'
-                    : 'hover:bg-black/10 text-black/80'
-                }`}
-              >
-                {lang === 'en' ? t('settings.language.en') : t('settings.language.id')}
-              </button>
-            ))}
-          </div>
-
-          <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
-            {t('settings.section.theme')}
-          </div>
-          <div className="grid grid-cols-4 gap-1 mb-4">
-            {THEME_NAMES.map((themeId) => (
-              <button
-                key={themeId}
-                onClick={() => setTheme(themeId)}
-                data-theme={themeId}
-                className={`px-2 py-2 rounded-lg text-xs transition-colors ${
-                  theme === themeId
-                    ? isDark(theme)
-                      ? 'bg-white/15 text-white'
-                      : isClaude(theme)
-                      ? 'bg-[#e8dcc4] text-[#3a2e1f]'
-                      : 'bg-black/15 text-black'
-                    : isDark(theme)
-                    ? 'hover:bg-white/10 text-white/80'
-                    : isClaude(theme)
-                    ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/80'
-                    : 'hover:bg-black/10 text-black/80'
-                }`}
-              >
-                {themeId === 'dark'
-                  ? t('settings.theme.dark')
-                  : themeId === 'light'
-                  ? t('settings.theme.light')
-                  : themeId === 'claude'
-                  ? t('settings.theme.claude')
-                  : themeId === 'sunset'
-                  ? t('settings.theme.sunset')
-                  : themeId === 'forest'
-                  ? t('settings.theme.forest')
-                  : themeId === 'ocean'
-                  ? t('settings.theme.ocean')
-                  : t('settings.theme.paper')}
-              </button>
-            ))}
-          </div>
-          <label
-            className={`flex items-center justify-between gap-2 mb-4 px-2 py-1.5 rounded-lg text-xs cursor-pointer ${
-              isDark(theme)
-                ? 'hover:bg-white/5 text-white/80'
-                : isClaude(theme)
-                ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/80'
-                : 'hover:bg-black/5 text-black/80'
-            }`}
-          >
-            <span>{t('settings.theme.auto')}</span>
-            <input
-              type="checkbox"
-              checked={autoTheme}
-              onChange={(e) => setAutoTheme(e.target.checked)}
-              className="accent-current"
-            />
-          </label>
-
-          {autoLaunch && (
-            <div
-              className={`flex items-center gap-2 mb-4 px-2 py-1.5 rounded-lg text-[10px] ${
-                isDark(theme) ? 'text-white/60' : isClaude(theme) ? 'text-[#3a2e1f]/60' : 'text-black/60'
-              }`}
-            >
-              <span>{t('settings.fullscreen.after')}</span>
-              <input
-                type="number"
-                min={1}
-                max={120}
-                value={Math.round(autoLaunchMs / 60_000)}
-                onChange={(e) => {
-                  const m = Math.max(1, Math.min(120, Number(e.target.value) || 5));
-                  setAutoLaunchMs(m * 60_000);
-                }}
-                className={`w-12 bg-transparent text-center tabular-nums outline-none ${
-                  isDark(theme) ? 'text-white' : isClaude(theme) ? 'text-[#3a2e1f]' : 'text-black'
-                }`}
-              />
-              <span>{t('settings.fullscreen.minIdle')}</span>
-            </div>
-          )}
-
-          <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
-            {t('settings.section.wallpaper')}
-          </div>
-          <div className="grid grid-cols-4 gap-1 mb-2">
-            {(['none', 'aurora', 'stars', 'rain', 'geometric', 'mesh', 'fireflies'] as const).map((w) => (
-              <button
-                key={w}
-                type="button"
-                onClick={() => setWallpaper(w)}
-                aria-pressed={wallpaper === w}
-                data-wallpaper={w}
-                className={`px-1 py-2 rounded-lg text-[10px] capitalize transition-colors ${
-                  wallpaper === w
-                    ? isDark(theme)
-                      ? 'bg-white/15 text-white'
-                      : isClaude(theme)
-                      ? 'bg-[#d4b896] text-[#3a2e1f]'
-                      : 'bg-black/15 text-black'
-                    : isDark(theme)
-                    ? 'hover:bg-white/10 text-white/80'
-                    : isClaude(theme)
-                    ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/80'
-                    : 'hover:bg-black/10 text-black/80'
-                }`}
-              >
-                {w === 'none'
-                  ? '∅'
-                  : w === 'aurora'
-                  ? '🌌'
-                  : w === 'stars'
-                  ? '✨'
-                  : w === 'rain'
-                  ? '🌧'
-                  : w === 'geometric'
-                  ? '◯'
-                  : w === 'mesh'
-                  ? '🌀'
-                  : '🪲'}{' '}
-                {w}
-              </button>
-            ))}
-          </div>
-          {wallpaper !== 'none' && (
-            <label
-              className={`flex items-center gap-2 mb-4 px-2 py-1.5 rounded-lg text-[10px] ${
-                isDark(theme) ? 'text-white/60' : isClaude(theme) ? 'text-[#3a2e1f]/60' : 'text-black/60'
-              }`}
-            >
-              <span>{t('settings.wallpaper.intensity')}</span>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={wallpaperIntensity}
-                onChange={(e) => setWallpaperIntensity(Number(e.target.value))}
-                className="flex-1 accent-current"
-              />
-            </label>
-          )}
-
-          <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
-            {t('settings.section.ambient')}
-          </div>
-          <div className="grid grid-cols-4 gap-1 mb-2">
-            {(['none', 'rain', 'forest', 'white'] as const).map((a) => (
-              <button
-                key={a}
-                type="button"
-                onClick={() => setAmbient(a)}
-                aria-pressed={ambient === a}
-                className={`px-1 py-2 rounded-lg text-[10px] capitalize transition-colors ${
-                  ambient === a
-                    ? isDark(theme)
-                      ? 'bg-white/15 text-white'
-                      : isClaude(theme)
-                      ? 'bg-[#d4b896] text-[#3a2e1f]'
-                      : 'bg-black/15 text-black'
-                    : isDark(theme)
-                    ? 'hover:bg-white/10 text-white/80'
-                    : isClaude(theme)
-                    ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/80'
-                    : 'hover:bg-black/10 text-black/80'
-                }`}
-              >
-                {a === 'none' ? '🔇' : a === 'rain' ? '🌧' : a === 'forest' ? '🌲' : '🌫'} {a}
-              </button>
-            ))}
-          </div>
-          {ambient !== 'none' && (
-            <label
-              className={`flex items-center gap-2 mb-4 px-2 py-1.5 rounded-lg text-[10px] ${
-                isDark(theme) ? 'text-white/60' : isClaude(theme) ? 'text-[#3a2e1f]/60' : 'text-black/60'
-              }`}
-            >
-              <span>{t('settings.ambient.volume')}</span>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={ambientVolume}
-                onChange={(e) => setAmbientVolume(Number(e.target.value))}
-                className="flex-1 accent-current"
-              />
-            </label>
-          )}
-
-          <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
-            {t('settings.section.clockStyle')}
-          </div>
-          <div className="grid grid-cols-5 gap-1 mb-4">
-            {CLOCK_STYLES.map((s) => (
-              <button
-                key={s}
-                onClick={() => setClockStyle(s)}
-                aria-pressed={clockStyle === s}
-                data-clock-style={s}
-                className={`px-1 py-2 rounded-lg text-[10px] capitalize transition-colors ${
-                  clockStyle === s
-                    ? isDark(theme)
-                      ? 'bg-white/15 text-white'
-                      : isClaude(theme)
-                      ? 'bg-[#e8dcc4] text-[#3a2e1f]'
-                      : 'bg-black/15 text-black'
-                    : isDark(theme)
-                    ? 'hover:bg-white/10 text-white/80'
-                    : isClaude(theme)
-                    ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/80'
-                    : 'hover:bg-black/10 text-black/80'
-                }`}
-              >
-                {s === 'digital' ? '🔢' : s === 'analog' ? '🕰️' : s === 'retro' ? '📟' : s === 'flip' ? '🔁' : '⌚'}
-                <div className="mt-0.5">{s}</div>
-              </button>
-            ))}
-          </div>
-
-          <div className="text-xs uppercase tracking-widest opacity-70 mb-3">
-            {t('settings.section.clockSize')}
-          </div>
-          <div className="flex items-stretch gap-1 mb-4">
-            <button
-              type="button"
-              onClick={() => adjustClockSize(-CLOCK_SIZE_PRESETS.step)}
-              disabled={clockSize <= CLOCK_SIZE_PRESETS.min}
-              aria-label={t('clock.decrease')}
-              className={`px-2 rounded-lg text-sm transition-colors ${
-                clockSize <= CLOCK_SIZE_PRESETS.min
-                  ? isDark(theme)
-                    ? 'bg-white/5 text-white/30 cursor-not-allowed'
-                    : isClaude(theme)
-                    ? 'bg-[#e8dcc4]/40 text-[#3a2e1f]/30 cursor-not-allowed'
-                    : 'bg-black/5 text-black/30 cursor-not-allowed'
-                  : isDark(theme)
-                  ? 'bg-white/10 hover:bg-white/20 text-white'
-                  : isClaude(theme)
-                  ? 'bg-[#e8dcc4] hover:bg-[#f0e6d2] text-[#3a2e1f]'
-                  : 'bg-black/10 hover:bg-black/20 text-black'
-              }`}
-            >
-              <Minus className="w-3 h-3" />
-            </button>
-            <div
-              className={`flex-1 flex items-baseline justify-center gap-1 rounded-lg tabular-nums ${
-                isDark(theme)
-                  ? 'bg-white/10 text-white'
-                  : isClaude(theme)
-                  ? 'bg-[#e8dcc4] text-[#3a2e1f]'
-                  : 'bg-black/10 text-black'
-              }`}
-            >
-              <span className="text-base font-semibold">{(clockSize as number).toFixed(1)}</span>
-              <span className="text-[10px] opacity-60">×</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => adjustClockSize(CLOCK_SIZE_PRESETS.step)}
-              disabled={clockSize >= CLOCK_SIZE_PRESETS.max}
-              aria-label={t('clock.increase')}
-              className={`px-2 rounded-lg text-sm transition-colors ${
-                clockSize >= CLOCK_SIZE_PRESETS.max
-                  ? isDark(theme)
-                    ? 'bg-white/5 text-white/30 cursor-not-allowed'
-                    : isClaude(theme)
-                    ? 'bg-[#e8dcc4]/40 text-[#3a2e1f]/30 cursor-not-allowed'
-                    : 'bg-black/5 text-black/30 cursor-not-allowed'
-                  : isDark(theme)
-                  ? 'bg-white/10 hover:bg-white/20 text-white'
-                  : isClaude(theme)
-                  ? 'bg-[#e8dcc4] hover:bg-[#f0e6d2] text-[#3a2e1f]'
-                  : 'bg-black/10 hover:bg-black/20 text-black'
-              }`}
-            >
-              <Plus className="w-3 h-3" />
-            </button>
-          </div>
-          <div className="grid grid-cols-4 gap-1 mb-4 -mt-2">
-            {CLOCK_SIZES.map((sz) => (
-              <button
-                key={sz.label}
-                onClick={() => setClockSize(sz.scale)}
-                aria-pressed={Math.abs((clockSize as number) - sz.scale) < 0.05}
-                className={`px-1 py-1.5 rounded-lg text-[10px] transition-colors ${
-                  Math.abs((clockSize as number) - sz.scale) < 0.05
-                    ? isDark(theme)
-                      ? 'bg-white/15 text-white'
-                      : isClaude(theme)
-                      ? 'bg-[#d6c8a8] text-[#3a2e1f]'
-                      : 'bg-black/15 text-black'
-                    : isDark(theme)
-                    ? 'hover:bg-white/10 text-white/70'
-                    : isClaude(theme)
-                    ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/70'
-                    : 'hover:bg-black/10 text-black/70'
-                }`}
-              >
-                {sz.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex items-baseline justify-between mb-3">
-            <div className="text-xs uppercase tracking-widest opacity-70">
-              {t('settings.section.clockColor')}
-            </div>
-            <div className="text-[10px] opacity-50">
-              {CLOCK_COLORS.find((c) => c.id === clockColor)?.label ?? clockColor}
-            </div>
-          </div>
-          <div className="grid grid-cols-6 gap-1.5 mb-2">
-            {CLOCK_COLORS.map((c) => {
-              // Contrast hint: if user picks white on light theme, or ink on
-              // dark theme, the digits will be invisible. Don't block the
-              // choice — let the user see the result and decide.
-              const poorContrast =
-                (c.id === 'white' && theme !== 'dark') ||
-                (c.id === 'ink' && theme === 'dark');
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setClockColor(c.id)}
-                  aria-pressed={clockColor === c.id}
-                  aria-label={c.label}
-                  data-color={c.id}
-                  data-poor-contrast={poorContrast ? '1' : '0'}
-                  title={
-                    poorContrast
-                      ? `${c.label} — may be hard to read on this theme`
-                      : c.label
-                  }
-                  className={`aspect-square rounded-lg transition-transform border ${
-                    clockColor === c.id
-                      ? isDark(theme)
-                        ? 'ring-2 ring-white/80 scale-105'
-                        : isClaude(theme)
-                        ? 'ring-2 ring-[#3a2e1f]/70 scale-105'
-                        : 'ring-2 ring-black/70 scale-105'
-                      : 'hover:scale-110'
-                  }`}
-                  style={{
-                    backgroundColor: c.hex,
-                    // Subtle inner border on light colors so they don't
-                    // disappear against light theme backdrops.
-                    borderColor: c.id === 'white' || c.id === 'gold' || c.id === 'lavender' || c.id === 'peach' || c.id === 'mint'
-                      ? 'rgba(0,0,0,0.15)'
-                      : 'transparent',
-                  }}
-                />
-              );
-            })}
-          </div>
-          {/* Custom HEX color picker — the 12th swatch. The native
-              `<input type="color">` opens the OS color dialog. We
-              validate the resulting value before storing it. */}
-          <div className="flex items-center gap-2 mb-4">
-            <button
-              type="button"
-              onClick={() => setClockColor('custom')}
-              aria-pressed={clockColor === 'custom'}
-              data-color="custom"
-              title={t('settings.clockColor.custom')}
-              className={`aspect-square w-9 rounded-lg transition-transform border ${
-                clockColor === 'custom'
-                  ? isDark(theme)
-                    ? 'ring-2 ring-white/80 scale-105'
-                    : isClaude(theme)
-                    ? 'ring-2 ring-[#3a2e1f]/70 scale-105'
-                    : 'ring-2 ring-black/70 scale-105'
-                  : 'hover:scale-110'
-              }`}
-              style={{ backgroundColor: customColor }}
-            />
-            <input
-              type="color"
-              value={customColor}
-              onChange={(e) => setCustomColor(e.target.value)}
-              aria-label={t('settings.clockColor.customHex')}
-              data-custom-color-input
-              className={`w-8 h-8 bg-transparent border rounded cursor-pointer ${isDark(theme) ? 'border-white/20' : 'border-black/20'}`}
-            />
-            <input
-              type="text"
-              value={customColor}
-              onChange={(e) => {
-                const v = e.target.value;
-                const norm = normalizeHex(v);
-                if (norm) setCustomColor(norm);
-                // While typing we don't switch the active color — that
-                // happens when the user clicks the swatch above.
-              }}
-              aria-label={t('settings.clockColor.customHexText')}
-              data-custom-color-text
-              placeholder="#a78bfa"
-              className={`flex-1 px-2 py-1 rounded text-[11px] font-mono outline-none ${
-                isDark(theme)
-                  ? 'bg-white/10 text-white placeholder-white/30 focus:bg-white/15'
-                  : isClaude(theme)
-                  ? 'bg-[#f0e6d2] text-[#3a2e1f] placeholder-[#3a2e1f]/40 focus:bg-[#e8dcc4]'
-                  : 'bg-black/5 text-black placeholder-black/40 focus:bg-black/10'
-              }`}
-            />
-          </div>
-
-          <div className="text-xs uppercase tracking-widest opacity-70 mb-3">
-            {t('settings.section.weatherCity')}
-          </div>
-          <input
-            type="text"
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            placeholder={t('settings.weather.placeholder')}
-            className={`w-full px-3 py-2 rounded-lg text-sm mb-4 outline-none ${
-              isDark(theme)
-                ? 'bg-white/10 text-white placeholder-white/40 focus:bg-white/15'
-                : isClaude(theme)
-                ? 'bg-[#f0e6d2] text-[#3a2e1f] placeholder-[#3a2e1f]/40 focus:bg-[#e8dcc4]'
-                : 'bg-black/5 text-black placeholder-black/40 focus:bg-black/10'
-            }`}
-          />
-
-          <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
-            {t('settings.weather.visibility')}
-          </div>
-          <div className="flex gap-1 mb-3">
-            <button
-              type="button"
-              onClick={turnOffAll}
-              disabled={allWidgetsOff}
-              className={`flex-1 px-2 py-1.5 rounded-lg text-xs transition-colors ${
-                isDark(theme)
-                  ? 'bg-white/5 hover:bg-white/15 disabled:bg-white/5 disabled:opacity-40'
-                  : isClaude(theme)
-                  ? 'bg-[#e8dcc4]/40 hover:bg-[#e8dcc4] disabled:bg-[#e8dcc4]/20 disabled:opacity-40 text-[#3a2e1f]'
-                  : 'bg-black/5 hover:bg-black/15 disabled:bg-black/5 disabled:opacity-40'
-              }`}
-            >
-              {allWidgetsOff ? 'All Off' : 'Turn Off All'}
-            </button>
-            <button
-              type="button"
-              onClick={resetSettings}
-              className={`flex-1 px-2 py-1.5 rounded-lg text-xs transition-colors ${
-                isDark(theme)
-                  ? 'bg-white/5 hover:bg-white/15 text-white/80'
-                  : isClaude(theme)
-                  ? 'bg-[#e8dcc4]/40 hover:bg-[#e8dcc4] text-[#3a2e1f]/80'
-                  : 'bg-black/5 hover:bg-black/15 text-black/80'
-              }`}
-            >
-              {t('common.reset')}
-            </button>
-          </div>
-          <div className="space-y-1">
-            {[
-              { label: 'Date', val: showDate, set: () => setShowDate((v) => !v) },
-              { label: 'Calendar', val: showCalendar, set: () => setShowCalendar((v) => !v) },
-              { label: 'World Clock', val: showWorldClock, set: () => setShowWorldClock((v) => !v) },
-              { label: 'Quotes', val: showQuote, set: () => setShowQuote((v) => !v) },
-              { label: 'Pomodoro', val: showPomodoro, set: () => setShowPomodoro((v) => !v) },
-              { label: 'Stopwatch', val: showStopwatch, set: () => setShowStopwatch((v) => !v) },
-              { label: 'Timer', val: showTimer, set: () => setShowTimer((v) => !v) },
-              { label: 'Breathing', val: showBreathing, set: () => setShowBreathing((v) => !v) },
-              { label: 'Affirmation', val: showAffirmation, set: () => setShowAffirmation((v) => !v) },
-              { label: 'Weather', val: showWeather, set: () => setShowWeather((v) => !v) },
-              { label: 'Day Progress', val: showDayProgress, set: () => setShowDayProgress((v) => !v) },
-              { label: 'Alarms', val: showAlarms, set: () => setShowAlarms((v) => !v) },
-              { label: 'Flip Sound', val: flipSound, set: () => setFlipSound((v) => !v) },
-              { label: 'Auto-launch', val: autoLaunch, set: () => setAutoLaunch((v) => !v) },
-            ].map((opt) => (
-              <label
-                key={opt.label}
-                className={`flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer ${
-                  isDark(theme)
-                    ? 'hover:bg-white/10'
-                    : isClaude(theme)
-                    ? 'hover:bg-[#f0e6d2]'
-                    : 'hover:bg-black/10'
-                }`}
-              >
-                <span className="text-sm font-medium">{opt.label}</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={opt.val}
-                  onClick={opt.set}
-                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                    opt.val
-                      ? isDark(theme)
-                        ? 'bg-white/50'
-                        : isClaude(theme)
-                        ? 'bg-[#a87a4a]'
-                        : 'bg-black/60'
-                      : isDark(theme)
-                      ? 'bg-white/15'
-                      : isClaude(theme)
-                      ? 'bg-[#d4b896]/50'
-                      : 'bg-black/20'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-3 w-3 transform rounded-full transition-transform bg-white ${
-                      opt.val ? 'translate-x-5' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </label>
-            ))}
-          </div>
-
-          {showWorldClock && (
-            <div className="mt-3">
-              <div className={`text-[10px] uppercase tracking-widest opacity-70 mb-2 ${
-                isDark(theme) ? 'text-white/60' : isClaude(theme) ? 'text-[#3a2e1f]/60' : 'text-black/60'
-              }`}>
-                {t('settings.section.cities', { n: worldCities.length })}
-              </div>
-              <CitiesManager theme={theme} />
-            </div>
-          )}
-
-          {showDate && (
-            <div
-              className={`mt-3 space-y-2 text-[10px] ${
-                isDark(theme) ? 'text-white/60' : isClaude(theme) ? 'text-[#3a2e1f]/60' : 'text-black/60'
-              }`}
-            >
-              <div className="flex gap-1">
-                {(['en-US', 'id-ID'] as const).map((loc) => (
-                  <button
-                    key={loc}
-                    type="button"
-                    onClick={() => setDateLocale(loc)}
-                    aria-pressed={dateLocale === loc}
-                    className={`flex-1 px-2 py-1 rounded text-[10px] transition-colors ${
-                      dateLocale === loc
-                        ? isDark(theme)
-                          ? 'bg-white/15 text-white'
-                          : isClaude(theme)
-                          ? 'bg-[#d4b896] text-[#3a2e1f]'
-                          : 'bg-black/15 text-black'
-                        : isDark(theme)
-                        ? 'hover:bg-white/10 text-white/70'
-                        : isClaude(theme)
-                        ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/70'
-                        : 'hover:bg-black/10 text-black/70'
-                    }`}
-                  >
-                    {loc === 'en-US' ? 'EN' : 'ID'}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-1">
-                {(['long', 'short', 'iso'] as const).map((f) => (
-                  <button
-                    key={f}
-                    type="button"
-                    onClick={() => setDateFormat(f)}
-                    aria-pressed={dateFormat === f}
-                    className={`flex-1 px-2 py-1 rounded text-[10px] transition-colors ${
-                      dateFormat === f
-                        ? isDark(theme)
-                          ? 'bg-white/15 text-white'
-                          : isClaude(theme)
-                          ? 'bg-[#d4b896] text-[#3a2e1f]'
-                          : 'bg-black/15 text-black'
-                        : isDark(theme)
-                        ? 'hover:bg-white/10 text-white/70'
-                        : isClaude(theme)
-                        ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/70'
-                        : 'hover:bg-black/10 text-black/70'
-                    }`}
-                  >
-                    {f === 'long' ? 'Long' : f === 'short' ? 'Short' : 'ISO'}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className={`text-[10px] mt-4 opacity-40 leading-relaxed ${isDark(theme) ? 'text-white' : 'text-black'}`}>
-            {t('settings.section.shortcuts')} <kbd className="px-1 border border-current/30 rounded">F</kbd> {t('shortcuts.hint.fullscreen')} ·{' '}
-            <kbd className="px-1 border border-current/30 rounded">S</kbd> {t('shortcuts.hint.settings')} ·{' '}
-            <kbd className="px-1 border border-current/30 rounded">H</kbd> {t('shortcuts.hint.hideUI')} ·{' '}
-            <kbd className="px-1 border border-current/30 rounded">Esc</kbd> {t('shortcuts.hint.closeWakeShort')}
-          </div>
-
-          {/* Settings export / import — sync current config between machines. */}
-          <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
-            {t('settings.section.backup')}
-          </div>
-          <div className="flex gap-1 mb-3">
-            <button
-              type="button"
-              onClick={() => {
-                try {
-                  const raw = window.localStorage.getItem(SETTINGS_KEY) ?? '{}';
-                  const blob = new Blob([raw], { type: 'application/json' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `screensaver-settings-${new Date().toISOString().slice(0, 10)}.json`;
-                  document.body.appendChild(a);
-                  a.click();
-                  a.remove();
-                  URL.revokeObjectURL(url);
-                } catch {
-                  // ignore
-                }
-              }}
-              className={`flex-1 px-2 py-1.5 rounded-lg text-xs transition-colors ${
-                isDark(theme)
-                  ? 'bg-white/5 hover:bg-white/15 text-white'
-                  : isClaude(theme)
-                  ? 'bg-[#e8dcc4] hover:bg-[#d4b896] text-[#3a2e1f]'
-                  : 'bg-black/5 hover:bg-black/15 text-black'
-              }`}
-            >
-              {t('settings.backup.export')}
-            </button>
-            <label
-              className={`flex-1 px-2 py-1.5 rounded-lg text-xs text-center transition-colors cursor-pointer ${
-                isDark(theme)
-                  ? 'bg-white/5 hover:bg-white/15 text-white'
-                  : isClaude(theme)
-                  ? 'bg-[#e8dcc4] hover:bg-[#d4b896] text-[#3a2e1f]'
-                  : 'bg-black/5 hover:bg-black/15 text-black'
-              }`}
-            >
-              {t('settings.backup.import')}
-              <input
-                type="file"
-                accept="application/json"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  const reader = new FileReader();
-                  reader.onload = () => {
-                    try {
-                      const text = String(reader.result);
-                      // Sanity-check: must be a JSON object with a layout
-                      // field (our settings always have one).
-                      const parsed = JSON.parse(text);
-                      if (typeof parsed !== 'object' || parsed === null || !('layout' in parsed)) {
-                        throw new Error('not a settings file');
-                      }
-                      window.localStorage.setItem(SETTINGS_KEY, text);
-                      // Reload to apply.
-                      window.location.reload();
-                    } catch {
-                      // ignore — bad file
-                    }
-                  };
-                  reader.readAsText(file);
-                  e.target.value = '';
-                }}
-              />
-            </label>
-          </div>
-        </div>
-      )}
-
-      {/* Layouts */}
-      {layout === 'classic' && (
-        <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-8 gap-8">
-          <DigitalClock style={clockStyle} color={clockColor} customHex={customColor} size={clockSize} soundEnabled={flipSound} theme={theme} />
-          {showDate && (
-            <Draggable id="date" theme={theme}>
-              <DateDisplay theme={theme} locale={dateLocale} format={dateFormat} />
-            </Draggable>
-          )}
-          {showCalendar && (
-            <div className="mt-2">
-              <Draggable id="calendar" theme={theme}>
-                <Calendar theme={theme} locale={dateLocale} />
-              </Draggable>
-            </div>
-          )}
-          {showWorldClock && (
-            <Draggable id="worldclock" theme={theme}>
-              <WorldClock color={clockColor} theme={theme} cities={worldCities} />
-            </Draggable>
-          )}
-
-          {(showPomodoro || showStopwatch || showDayProgress || showTimer || showBreathing) && (
-            <div className="flex flex-wrap items-start justify-center gap-12 mt-2">
-              {showPomodoro && <Pomodoro theme={theme} />}
-              {showStopwatch && <Stopwatch theme={theme} />}
-              {showTimer && <Timer theme={theme} />}
-              {showBreathing && <Breathing theme={theme} />}
-              {showDayProgress && <DayProgress theme={theme} city={city} />}
-            </div>
-          )}
-
-          {(showWeather || showQuote || showAlarms) && (
-            <div className="flex flex-col items-center gap-4 mt-2 w-full max-w-md">
-              {showWeather && <Weather theme={theme} city={city} />}
-              {showQuote && <Quotes theme={theme} />}
-              {showAffirmation && <Affirmation theme={theme} />}
-              {showAlarms && <AlarmList theme={theme} />}
-            </div>
-          )}
-        </div>
-      )}
-
-      {layout === 'split' && (
-        <div className="relative z-10 min-h-screen grid grid-cols-1 md:grid-cols-3 gap-6 p-12">
-          {/* Left: time */}
-          <div className="flex flex-col items-center justify-center gap-6 border-r border-white/10 pr-6">
-            <DigitalClock style={clockStyle} color={clockColor} customHex={customColor} size={clockSize} soundEnabled={flipSound} theme={theme} />
-            {showDate && <DateDisplay theme={theme} locale={dateLocale} format={dateFormat} />}
-          {showCalendar && <div className="mt-2"><Calendar theme={theme} locale={dateLocale} /></div>}
-            {showWorldClock && <WorldClock color={clockColor} customHex={customColor} theme={theme} cities={worldCities} />}
-            {showDayProgress && <DayProgress theme={theme} city={city} />}
-          </div>
-
-          {/* Center: tools */}
-          <div className="flex flex-col items-center justify-center gap-8 border-r border-white/10 pr-6">
-            {showPomodoro && <Pomodoro theme={theme} />}
-            {showStopwatch && <Stopwatch theme={theme} />}
-            {showTimer && <Timer theme={theme} />}
-            {showAlarms && <AlarmList theme={theme} />}
-          </div>
-
-          {/* Right: info */}
-          <div className="flex flex-col items-start justify-center gap-6">
-            {showWeather && <Weather theme={theme} city={city} />}
-            {showQuote && <Quotes theme={theme} />}
-          </div>
-        </div>
-      )}
-
-      {layout === 'minimal' && (
-        <div className="relative z-10 min-h-screen flex items-center justify-center p-8">
-          <DigitalClock style={clockStyle} color={clockColor} customHex={customColor} size={clockSize} soundEnabled={flipSound} theme={theme} />
-        </div>
-      )}
-    </div>
+    </SettingsContext.Provider>
   );
 }

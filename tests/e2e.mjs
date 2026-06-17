@@ -721,7 +721,7 @@ const tests = [
   // ── Clock color picker ──────────────────────────────────────────
 
   {
-    name: 'clock color: 11 swatches render in the picker grid',
+    name: 'clock color: 12 swatches render in the picker grid (11 presets + 1 custom)',
     fn: async (page) => {
       // Open settings.
       const dialogOpen = await page.evaluate(() =>
@@ -731,12 +731,17 @@ const tests = [
         await page.keyboard.press('s');
         await page.waitForSelector('[role="dialog"][aria-label="Settings"]', { timeout: 3000 });
       }
+      // 11 preset swatches (white, ink, amber, green, cyan, red, pink,
+      // mint, lavender, peach, gold) + 1 custom HEX swatch. The
+      // <input type="color"> + text input also carry the
+      // data-color* attributes for tests that pick them by id, but
+      // we count only the button[data-color] (the visible swatches).
       const swatchCount = await page.evaluate(
         () => document.querySelectorAll('button[data-color]').length,
       );
       assert(
-        swatchCount === 11,
-        `expected 11 swatches (white, ink, amber, green, cyan, red, pink, mint, lavender, peach, gold), got ${swatchCount}`,
+        swatchCount === 12,
+        `expected 12 swatches (11 presets + custom), got ${swatchCount}`,
       );
     },
   },
