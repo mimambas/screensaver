@@ -1,8 +1,13 @@
-// Animated wallpapers — three pure-CSS / pure-SVG variants that sit
-// behind the entire app. Cheap on the GPU (no JS animation, just
-// CSS keyframes), and respect intensity via a single opacity prop.
+// Animated wallpapers — pure-CSS / pure-SVG variants that sit behind
+// the entire app. Cheap on the GPU (no JS animation, just CSS
+// keyframes), and respect intensity via a single opacity prop.
+//
+// When `reducedMotion` is true we skip the CSS animations entirely
+// (still a valid decorative backdrop, just frozen). The user picked
+// the wallpaper for its palette/texture, not for the motion.
 
 import { useMemo } from 'react';
+import { usePrefersReducedMotion } from '../lib/use-prefers-reduced-motion';
 
 export type WallpaperStyle = 'aurora' | 'stars' | 'rain' | 'geometric' | 'mesh' | 'fireflies';
 
@@ -18,19 +23,20 @@ export function Wallpaper({
   intensity: number;
   isDark: boolean;
 }) {
-  if (style === 'aurora') return <Aurora intensity={intensity} isDark={isDark} />;
-  if (style === 'stars') return <Stars intensity={intensity} />;
-  if (style === 'rain') return <Rain intensity={intensity} />;
-  if (style === 'geometric') return <Geometric intensity={intensity} isDark={isDark} />;
-  if (style === 'mesh') return <Mesh intensity={intensity} isDark={isDark} />;
-  return <Fireflies intensity={intensity} isDark={isDark} />;
+  const reduced = usePrefersReducedMotion();
+  if (style === 'aurora') return <Aurora intensity={intensity} isDark={isDark} reduced={reduced} />;
+  if (style === 'stars') return <Stars intensity={intensity} reduced={reduced} />;
+  if (style === 'rain') return <Rain intensity={intensity} reduced={reduced} />;
+  if (style === 'geometric') return <Geometric intensity={intensity} isDark={isDark} reduced={reduced} />;
+  if (style === 'mesh') return <Mesh intensity={intensity} isDark={isDark} reduced={reduced} />;
+  return <Fireflies intensity={intensity} isDark={isDark} reduced={reduced} />;
 }
 
 // Re-export the style list so settings can render buttons without
 // duplicating the union.
 export const WALLPAPER_STYLES = STYLES;
 
-function Aurora({ intensity, isDark: dark }: { intensity: number; isDark: boolean }) {
+function Aurora({ intensity, isDark: dark, reduced }: { intensity: number; isDark: boolean; reduced: boolean }) {
   // Two soft color blobs that drift across the screen. Pick accent
   // colors that match the theme so it doesn't clash.
   const a = dark ? 'rgba(120, 80, 200, 0.55)' : 'rgba(255, 200, 120, 0.55)';
@@ -86,7 +92,9 @@ function Aurora({ intensity, isDark: dark }: { intensity: number; isDark: boolea
             background: b.color,
             filter: 'blur(120px)',
             opacity: alpha(0.6),
-            animation: `${['auroraDrift1', 'auroraDrift2', 'auroraDrift3'][i]} 24s ease-in-out ${b.delay} infinite`,
+            // No animation when the user asked for reduced motion;
+            // the gradient blobs sit as a static backdrop.
+            animation: reduced ? 'none' : `${['auroraDrift1', 'auroraDrift2', 'auroraDrift3'][i]} 24s ease-in-out ${b.delay} infinite`,
           }}
         />
       ))}
@@ -94,7 +102,7 @@ function Aurora({ intensity, isDark: dark }: { intensity: number; isDark: boolea
   );
 }
 
-function Stars({ intensity }: { intensity: number }) {
+function Stars({ intensity, reduced }: { intensity: number; reduced: boolean }) {
   // Deterministic star field — 80 random positions seeded once.
   const stars = useMemo(() => {
     const out: { left: number; top: number; size: number; delay: number; dur: number }[] = [];
@@ -140,7 +148,7 @@ function Stars({ intensity }: { intensity: number }) {
             borderRadius: '50%',
             background: 'white',
             opacity: 0.4,
-            animation: `starTwinkle ${s.dur}s ease-in-out ${s.delay}s infinite`,
+            animation: reduced ? 'none' : `starTwinkle ${s.dur}s ease-in-out ${s.delay}s infinite`,
           }}
         />
       ))}
@@ -148,7 +156,7 @@ function Stars({ intensity }: { intensity: number }) {
   );
 }
 
-function Rain({ intensity }: { intensity: number }) {
+function Rain({ intensity, reduced }: { intensity: number; reduced: boolean }) {
   // 60 rain streaks falling at staggered speeds. Pure CSS animation.
   const drops = useMemo(() => {
     const out: { left: number; delay: number; dur: number; len: number; opacity: number }[] = [];
@@ -193,7 +201,7 @@ function Rain({ intensity }: { intensity: number }) {
             height: d.len,
             background: 'linear-gradient(to bottom, transparent, rgba(180, 200, 220, 0.8))',
             opacity: d.opacity,
-            animation: `rainFall ${d.dur}s linear ${d.delay}s infinite`,
+            animation: reduced ? 'none' : `rainFall ${d.dur}s linear ${d.delay}s infinite`,
           }}
         />
       ))}
@@ -204,7 +212,7 @@ function Rain({ intensity }: { intensity: number }) {
 // Geometric: 8 outlined rings + 2 large faint rings, each rotating
 // slowly in alternating directions. Pure SVG, GPU-cheap. Reads as
 // "concentric" without being busy.
-function Geometric({ intensity, isDark: dark }: { intensity: number; isDark: boolean }) {
+function Geometric({ intensity, isDark: dark, reduced }: { intensity: number; isDark: boolean; reduced: boolean }) {
   const stroke = dark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.16)';
   const fill = dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)';
   const alpha = (n: number) => Math.min(1, intensity * n);
@@ -256,7 +264,7 @@ function Geometric({ intensity, isDark: dark }: { intensity: number; isDark: boo
             left: `${s.left}%`,
             top: `${s.top}%`,
             opacity: alpha(0.6),
-            animation: `${s.reverse ? 'geoSpinRev' : 'geoSpin'} ${s.dur}s linear ${s.delay}s infinite`,
+            animation: reduced ? 'none' : `${s.reverse ? 'geoSpinRev' : 'geoSpin'} ${s.dur}s linear ${s.delay}s infinite`,
           }}
         >
           <circle cx="50" cy="50" r="48" fill={fill} stroke={stroke} strokeWidth="0.6" />
@@ -270,7 +278,7 @@ function Geometric({ intensity, isDark: dark }: { intensity: number; isDark: boo
 
 // Mesh: 4 large blurred radial gradients that drift in different
 // directions. More colorful than aurora; calmer than rain. Pure CSS.
-function Mesh({ intensity, isDark: dark }: { intensity: number; isDark: boolean }) {
+function Mesh({ intensity, isDark: dark, reduced }: { intensity: number; isDark: boolean; reduced: boolean }) {
   const blobs = useMemo(() => {
     const out: { left: number; top: number; size: number; dx: number; dy: number; dur: number; delay: number }[] = [];
     let s = 0xDEED;
@@ -321,7 +329,7 @@ function Mesh({ intensity, isDark: dark }: { intensity: number; isDark: boolean 
             background: palette[i],
             filter: 'blur(140px)',
             opacity: alpha(0.6),
-            animation: `${['meshDrift1', 'meshDrift2', 'meshDrift3', 'meshDrift4'][i]} ${b.dur}s ease-in-out ${b.delay}s infinite`,
+            animation: reduced ? 'none' : `${['meshDrift1', 'meshDrift2', 'meshDrift3', 'meshDrift4'][i]} ${b.dur}s ease-in-out ${b.delay}s infinite`,
           }}
         />
       ))}
@@ -333,7 +341,7 @@ function Mesh({ intensity, isDark: dark }: { intensity: number; isDark: boolean 
 // independent loops, each with a unique duration and phase. The
 // "glow" is a radial-gradient (no box-shadow needed). On light
 // themes we shift to amber so they stay visible.
-function Fireflies({ intensity, isDark: dark }: { intensity: number; isDark: boolean }) {
+function Fireflies({ intensity, isDark: dark, reduced }: { intensity: number; isDark: boolean; reduced: boolean }) {
   const flies = useMemo(() => {
     const out: {
       left: number;
@@ -398,7 +406,9 @@ function Fireflies({ intensity, isDark: dark }: { intensity: number; isDark: boo
             // CSS custom props feed the keyframe var(--dx/--dy).
             ['--dx' as string]: `${f.dx}px`,
             ['--dy' as string]: `${f.dy}px`,
-            animation: `flyFloat ${f.dur}s ease-in-out ${f.delay}s infinite, flyPulse ${f.pulseDur}s ease-in-out ${f.pulseDelay}s infinite`,
+            animation: reduced
+              ? 'none'
+              : `flyFloat ${f.dur}s ease-in-out ${f.delay}s infinite, flyPulse ${f.pulseDur}s ease-in-out ${f.pulseDelay}s infinite`,
           }}
         />
       ))}

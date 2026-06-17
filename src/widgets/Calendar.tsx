@@ -21,13 +21,17 @@ export function Calendar({
     return { year: d.getFullYear(), month: d.getMonth() };
   });
 
-  // Re-anchor 'today' at midnight so the highlight stays correct
-  // even if the page is left open across a day boundary. We track
-  // the day-of-month in a primitive so the deps array stays
-  // statically analyzable.
+  // Re-anchor 'today' at the next local midnight. We compute the
+  // ms-until-midnight from a fresh Date so hours are included —
+  // earlier formula dropped them and could fire instantly after
+  // midnight. We track the day-of-month in a primitive so the deps
+  // array stays statically analyzable.
   const today = now.getDate();
   useEffect(() => {
-    const ms = (24 * 60 - new Date().getMinutes()) * 60_000 - new Date().getSeconds() * 1000;
+    const nowMs = Date.now();
+    const nextMidnight = new Date(nowMs);
+    nextMidnight.setHours(24, 0, 0, 0); // rolls over to tomorrow 00:00:00.000
+    const ms = nextMidnight.getTime() - nowMs;
     const id = window.setTimeout(() => {
       setNow(new Date());
       const d = new Date();
@@ -59,11 +63,7 @@ export function Calendar({
   const daysInMonth = new Date(view.year, view.month + 1, 0).getDate();
   const daysInPrevMonth = new Date(view.year, view.month, 0).getDate();
   const cells: { date: Date; inMonth: boolean }[] = [];
-  // Leading
-  for (let i = startWeekday - firstDay; i < startWeekday - firstDay + firstDay - firstDay; i++) {
-    // placeholder — loop below
-  }
-  // Cleaner: compute absolute offset of first cell (col 0 = firstDay)
+  // Leading: align to firstDay of locale's week.
   const leadingCount = (startWeekday - firstDay + 7) % 7;
   for (let i = 0; i < leadingCount; i++) {
     const d = new Date(view.year, view.month - 1, daysInPrevMonth - leadingCount + i + 1);

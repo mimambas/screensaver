@@ -47,6 +47,10 @@ export const catalog: Catalog = {
   'settings.theme.dark': { en: '🌑 Dark', id: '🌑 Gelap' },
   'settings.theme.light': { en: '☀️ Light', id: '☀️ Terang' },
   'settings.theme.claude': { en: '🍂 Claude', id: '🍂 Claude' },
+  'settings.theme.sunset': { en: '🌅 Sunset', id: '🌅 Senja' },
+  'settings.theme.forest': { en: '🌲 Forest', id: '🌲 Hutan' },
+  'settings.theme.ocean': { en: '🌊 Ocean', id: '🌊 Laut' },
+  'settings.theme.paper': { en: '📜 Paper', id: '📜 Kertas' },
   'settings.fullscreen.after': { en: 'Fullscreen after', id: 'Layar penuh setelah' },
   'settings.fullscreen.minIdle': { en: 'min idle', id: 'menit idle' },
   'settings.wallpaper.intensity': { en: 'Intensity', id: 'Intensitas' },
@@ -226,4 +230,16 @@ export const catalog: Catalog = {
     id: 'Tarik untuk pindah, klik dua kali untuk reset',
   },
   'draggable.resetTitle': { en: 'Reset position', id: 'Reset posisi' },
+
+  // ── breathing exercise widget ────────────────────────────────
+  'breathing.title': { en: 'Breathing', id: 'Pernapasan' },
+  'breathing.start': { en: 'Start breathing', id: 'Mulai pernapasan' },
+  'breathing.pause': { en: 'Pause', id: 'Jeda' },
+  'breathing.mute': { en: 'Mute chime', id: 'Matikan suara' },
+  'breathing.unmute': { en: 'Unmute chime', id: 'Aktifkan suara' },
+  'breathing.inhale': { en: 'Breathe in', id: 'Tarik napas' },
+  'breathing.exhale': { en: 'Breathe out', id: 'Hembuskan' },
+  'breathing.holdin': { en: 'Hold', id: 'Tahan' },
+  'breathing.holdout': { en: 'Hold', id: 'Tahan' },
+  'breathing.cycleOf': { en: 'cycle {n} of {total}', id: 'siklus {n} dari {total}' },
 };

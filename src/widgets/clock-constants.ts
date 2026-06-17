@@ -13,7 +13,9 @@ export type ClockColor =
   | 'gold';
 /** Continuous scale multiplier, 0.5 .. 3.0, step 0.1 */
 export type ClockSize = number;
-export type ThemeName = 'dark' | 'light' | 'claude';
+// Re-export the theme types from theme-presets so legacy imports of
+// `ThemeName` from clock-constants keep working.
+export type { ThemeName } from './theme-presets';
 
 export const CLOCK_STYLES: ClockStyle[] = ['digital', 'analog', 'retro', 'flip', 'casio'];
 /** Preset sizes for the +/- button quick-select. */

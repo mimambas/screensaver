@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Quote as QuoteIcon } from 'lucide-react';
+import type { ThemeName } from './clock-constants';
+import { THEMES } from './theme-presets';
 
 const QUOTES: { text: string; author: string }[] = [
   { text: 'The only way to do great work is to love what you do.', author: 'Steve Jobs' },
@@ -18,17 +20,44 @@ const QUOTES: { text: string; author: string }[] = [
   { text: 'Walk as if you are kissing the Earth with your feet.', author: 'Thich Nhat Hanh' },
 ];
 
-const STORAGE_KEY = 'screensaver.quote.idx';
+// Schema-versioned storage. v1 was just the index — if the catalog
+// grew/shrunk since the user last opened the app, a stale index
+// could point at a quote that no longer exists (or wrap around
+// and re-show the same quote more often). v2 stores both the index
+// AND the catalog length, so we can detect a mismatch and reset.
+const STORAGE_KEY = 'screensaver.quote.idx.v2';
+
+type Persisted = { v: 2; idx: number; len: number };
 
 function loadIdx(): number {
-  if (typeof window === 'undefined') return 0;
+  if (typeof window === 'undefined') return Math.floor(Math.random() * QUOTES.length);
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return Math.floor(Math.random() * QUOTES.length);
-    const n = Number(raw);
-    return Number.isFinite(n) && n >= 0 && n < QUOTES.length ? n : 0;
+    const parsed = JSON.parse(raw) as Partial<Persisted>;
+    // Mismatch (older shape or stale length) → start fresh.
+    if (
+      parsed.v !== 2 ||
+      typeof parsed.idx !== 'number' ||
+      typeof parsed.len !== 'number' ||
+      parsed.len !== QUOTES.length ||
+      parsed.idx < 0 ||
+      parsed.idx >= QUOTES.length
+    ) {
+      return Math.floor(Math.random() * QUOTES.length);
+    }
+    return parsed.idx;
   } catch {
     return 0;
+  }
+}
+
+function saveIdx(idx: number) {
+  try {
+    const payload: Persisted = { v: 2, idx, len: QUOTES.length };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    /* ignore */
   }
 }
 
@@ -40,7 +69,7 @@ function pickNext(prev: number): number {
   return n;
 }
 
-export function Quotes({ theme = 'dark', rotateMs = 30_000 }: { theme?: 'dark' | 'light' | 'claude'; rotateMs?: number }) {
+export function Quotes({ theme = 'dark', rotateMs = 30_000 }: { theme?: ThemeName; rotateMs?: number }) {
   const [idx, setIdx] = useState(loadIdx);
   const [visible, setVisible] = useState(true);
 
@@ -50,7 +79,7 @@ export function Quotes({ theme = 'dark', rotateMs = 30_000 }: { theme?: 'dark' |
       window.setTimeout(() => {
         setIdx((prev) => {
           const next = pickNext(prev);
-          try { window.localStorage.setItem(STORAGE_KEY, String(next)); } catch { /* ignore */ }
+          saveIdx(next);
           return next;
         });
         setVisible(true);
@@ -60,8 +89,7 @@ export function Quotes({ theme = 'dark', rotateMs = 30_000 }: { theme?: 'dark' |
   }, [rotateMs]);
 
   const q = QUOTES[idx];
-  const label =
-    theme === 'dark' ? 'opacity-50' : theme === 'claude' ? 'text-[#3a2e1f]/50' : 'opacity-50';
+  const label = THEMES[theme].textMuted;
 
   return (
     <div

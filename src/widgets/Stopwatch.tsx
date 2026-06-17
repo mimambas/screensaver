@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Play, Pause, RotateCcw, Flag } from 'lucide-react';
+import type { ThemeName } from './clock-constants';
+import { THEMES } from './theme-presets';
 import { useT } from '../i18n';
 
 function formatTime(ms: number) {
@@ -10,7 +12,7 @@ function formatTime(ms: number) {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(centi).padStart(2, '0')}`;
 }
 
-export function Stopwatch({ theme = 'dark' }: { theme?: 'dark' | 'light' | 'claude' }) {
+export function Stopwatch({ theme = 'dark' }: { theme?: ThemeName }) {
   const t = useT();
   const [ms, setMs] = useState(0);
   const [running, setRunning] = useState(false);
@@ -44,13 +46,22 @@ export function Stopwatch({ theme = 'dark' }: { theme?: 'dark' | 'light' | 'clau
     baseRef.current = 0;
   };
 
-  const lap = () => {
-    // Snapshot the CURRENT displayed ms so laps match what user sees
-    setLaps((l) => [ms, ...l]);
-  };
+  const lap = useCallback(() => {
+    // Snapshot the LIVE elapsed ms, not the React state. `ms` is
+    // updated by rAF so the rendered digit is always 1 frame ahead
+    // of state; reading from state can record a lap that looks
+    // "behind" the last visible tick. The rAF tick already updates
+    // state, so the difference is tiny — but on slow machines it
+    // shows.
+    const live = startedAtRef.current !== null
+      ? baseRef.current + (Date.now() - startedAtRef.current)
+      : baseRef.current;
+    setLaps((l) => [live, ...l]);
+  }, []);
 
-  const btnHover = theme === 'dark' ? 'hover:bg-white/15' : theme === 'claude' ? 'hover:bg-[#d4b896]/30' : 'hover:bg-black/15';
-  const lapMute = theme === 'dark' ? 'opacity-70' : theme === 'claude' ? 'text-[#3a2e1f]/70' : 'opacity-80';
+  const palette = THEMES[theme];
+  const btnHover = palette.surfaceHover;
+  const lapMute = palette.textMuted;
 
   return (
     <div className="flex flex-col gap-3">

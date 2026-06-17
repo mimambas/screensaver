@@ -181,6 +181,8 @@ export function useCasioState(): CasioHandle {
     // Define the increment fn for the currently-pressed edit action.
     // The reference does this inline; we wrap it in a ref callback that
     // gets set on every pressA so the interval always sees fresh state.
+    // No deps array on purpose: we want this to re-run every render so
+    // the ref always points at the latest closure of `state`/`flags`.
     autoRepeatTickRef.current = () => {
       const s = stateRef.current;
       const f = flagsRef.current;

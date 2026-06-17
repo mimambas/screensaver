@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Play, Pause, RotateCcw, Coffee, Brain } from 'lucide-react';
 import { playChime } from './audio';
 import type { ThemeName } from './clock-constants';
+import { THEMES } from './theme-presets';
 import { useT } from '../i18n';
 
 // Mode display label is now derived from i18n via t() at render
@@ -172,6 +173,20 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
     saveStats(stats);
   }, [stats]);
 
+  // Latest values for the phase-advance reducer. Captured in refs so
+  // the interval effect doesn't have to depend on `shortMin` / `longMin`
+  // (changing them mid-run would otherwise reset the interval). The
+  // refs sync on every render via a separate effect; reads inside the
+  // setMode callback always see the freshest value.
+  const workMinRef = useRef(workMin);
+  const shortMinRef = useRef(shortMin);
+  const longMinRef = useRef(longMin);
+  useEffect(() => {
+    workMinRef.current = workMin;
+    shortMinRef.current = shortMin;
+    longMinRef.current = longMin;
+  }, [workMin, shortMin, longMin]);
+
   useEffect(() => {
     if (!running) return;
     const id = window.setInterval(() => {
@@ -207,10 +222,10 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
                 : new Array(24).fill(null).map(() => ({ minutes: 0, mode: 'work' as HourlyMode }));
               const cell = hourly[now.getHours()];
               hourly[now.getHours()] = {
-                minutes: cell.minutes + workMin,
+                minutes: cell.minutes + workMinRef.current,
                 mode: 'work',
               };
-              return { ...s, [k]: { minutes: prev.minutes + workMin, cycles: prev.cycles + 1, hourly } };
+              return { ...s, [k]: { minutes: prev.minutes + workMinRef.current, cycles: prev.cycles + 1, hourly } };
             });
           }
           // v2: also track break minutes in hourly. We attribute the
@@ -218,7 +233,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
           // sessions). We do NOT increment `cycles` for breaks — that
           // count is "completed work sessions" and stays accurate.
           if (prev === 'short' || prev === 'long') {
-            const breakMin = prev === 'short' ? shortMin : longMin;
+            const breakMin = prev === 'short' ? shortMinRef.current : longMinRef.current;
             const breakMode: HourlyMode = prev;
             setStats((s) => {
               const k = dayKey(new Date());
@@ -249,10 +264,11 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
       });
     }, 1000);
     return () => window.clearInterval(id);
-    // We intentionally exclude `seconds`, `mode` from deps to keep
-    // the interval stable — those reads come from the latest closure
-    // via setState. Re-firing every second would reset the timer.
-  }, [running, cyclesCompleted, autoStart, workMin]);
+    // We intentionally exclude `seconds`, `mode`, and the per-phase
+    // minute values from deps. The interval stays stable so we don't
+    // reset the timer mid-run; the refs above keep the reducer reading
+    // the freshest values.
+  }, [running, cyclesCompleted, autoStart]);
 
   const reset = () => {
     setRunning(false);
@@ -406,15 +422,18 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
   const progress = totalSec > 0 ? ((totalSec - seconds) / totalSec) * 100 : 0;
   const { mm, ss } = fmt(seconds);
 
-  const labelClass = theme === 'dark' ? 'text-white/70' : theme === 'claude' ? 'text-[#3a2e1f]/70' : 'text-black/70';
-  const btnHover = theme === 'dark' ? 'hover:bg-white/10' : theme === 'claude' ? 'hover:bg-[#d4b896]/30' : 'hover:bg-black/10';
-  const trackBg = theme === 'dark' ? 'bg-white/15' : theme === 'claude' ? 'bg-[#d4b896]/40' : 'bg-black/15';
+  // Theme tokens — pulled from theme-presets so the new Sunset/
+  // Forest/Ocean/Paper themes look right without per-widget forks.
+  const palette = THEMES[theme];
+  const labelClass = palette.textMuted;
+  const btnHover = palette.surfaceHover;
+  const trackBg = theme === 'claude' ? 'bg-[#d4b896]/40' : palette.surface;
   const fillBg =
     mode === 'work'
-      ? theme === 'dark' ? 'bg-white/70' : theme === 'claude' ? 'bg-[#a87a4a]' : 'bg-black/70'
+      ? theme === 'claude' ? 'bg-[#a87a4a]' : palette.text
       : mode === 'short'
-      ? theme === 'dark' ? 'bg-emerald-400/70' : 'bg-emerald-500/70'
-      : theme === 'dark' ? 'bg-sky-400/70' : 'bg-sky-500/70';
+      ? palette.isDark ? 'bg-emerald-400/70' : 'bg-emerald-500/70'
+      : palette.isDark ? 'bg-sky-400/70' : 'bg-sky-500/70';
 
   // Phase colors for heatmap cells. Same hue family as the timer
   // digits above so the visual language is consistent: work = warm/
@@ -423,31 +442,31 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
     m === 'work'
       ? fillBg
       : m === 'short'
-      ? theme === 'dark' ? 'bg-emerald-400' : theme === 'claude' ? 'bg-emerald-600' : 'bg-emerald-500'
-      : theme === 'dark' ? 'bg-sky-400' : theme === 'claude' ? 'bg-sky-600' : 'bg-sky-500';
+      ? palette.isDark ? 'bg-emerald-400' : 'bg-emerald-500'
+      : palette.isDark ? 'bg-sky-400' : 'bg-sky-500';
   // Color of the digit per phase. Tells the user at a glance which
   // mode the timer is in.
   const digitColor =
     mode === 'work'
-      ? theme === 'dark' ? 'text-white' : theme === 'claude' ? 'text-[#3a2e1f]' : 'text-black'
+      ? palette.text
       : mode === 'short'
-      ? theme === 'dark' ? 'text-emerald-300' : 'text-emerald-600'
-      : theme === 'dark' ? 'text-sky-300' : 'text-sky-600';
-  const muteSpan = theme === 'dark' ? 'text-white/40' : theme === 'claude' ? 'text-[#3a2e1f]/40' : 'text-black/40';
+      ? palette.isDark ? 'text-emerald-300' : 'text-emerald-600'
+      : palette.isDark ? 'text-sky-300' : 'text-sky-600';
+  const muteSpan = palette.textFaint;
   // Subtle card tint during break, so the widget itself feels
   // different without tinting the rest of the screen.
   const cardTint =
     mode === 'work'
       ? ''
       : mode === 'short'
-      ? theme === 'dark' ? 'bg-emerald-500/5' : 'bg-emerald-500/10'
-      : theme === 'dark' ? 'bg-sky-500/5' : 'bg-sky-500/10';
+      ? palette.isDark ? 'bg-emerald-500/5' : 'bg-emerald-500/10'
+      : palette.isDark ? 'bg-sky-500/5' : 'bg-sky-500/10';
   const cardBorder =
     mode === 'work'
-      ? theme === 'dark' ? 'border-white/10' : theme === 'claude' ? 'border-[#3a2e1f]/15' : 'border-black/10'
+      ? theme === 'claude' ? 'border-[#3a2e1f]/15' : palette.border
       : mode === 'short'
-      ? theme === 'dark' ? 'border-emerald-400/30' : 'border-emerald-500/30'
-      : theme === 'dark' ? 'border-sky-400/30' : 'border-sky-500/30';
+      ? palette.isDark ? 'border-emerald-400/30' : 'border-emerald-500/30'
+      : palette.isDark ? 'border-sky-400/30' : 'border-sky-500/30';
 
   return (
     <div
@@ -465,11 +484,9 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
             className={`w-1.5 h-1.5 rounded-full transition-colors ${
               i < (cyclesCompleted % 4)
                 ? fillBg
-                : theme === 'dark'
-                ? 'bg-white/15'
                 : theme === 'claude'
                 ? 'bg-[#3a2e1f]/15'
-                : 'bg-black/15'
+                : palette.surface
             }`}
           />
         ))}
@@ -487,7 +504,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
             disabled={running}
             className={`px-2 py-1 rounded-full uppercase tracking-widest transition-colors ${
               mode === m
-                ? theme === 'dark' ? 'bg-white/20 text-white' : theme === 'claude' ? 'bg-[#3a2e1f]/15 text-[#3a2e1f]' : 'bg-black/15 text-black'
+                ? theme === 'claude' ? 'bg-[#3a2e1f]/15 text-[#3a2e1f]' : `${palette.surface} ${palette.text}`
                 : `${labelClass} ${btnHover} disabled:opacity-40`
             }`}
           >
@@ -599,11 +616,9 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
                   data-range={r}
                   className={`px-2 py-0.5 transition-colors ${
                     range === r
-                      ? theme === 'dark'
-                        ? 'bg-white/20 text-white'
-                        : theme === 'claude'
+                      ? theme === 'claude'
                         ? 'bg-[#3a2e1f]/15 text-[#3a2e1f]'
-                        : 'bg-black/15 text-black'
+                        : `${palette.surface} ${palette.text}`
                       : ''
                   }`}
                 >
@@ -676,7 +691,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
             {streak >= 1 && (
               <span
                 className={`px-1.5 py-0.5 rounded-full border border-current/20 ${
-                  theme === 'dark' ? 'bg-white/5' : 'bg-black/5'
+                  palette.isDark ? 'bg-white/5' : 'bg-black/5'
                 }`}
                 data-achievement="streak"
               >
@@ -686,7 +701,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
             {longestStreak > streak && longestStreak >= 3 && (
               <span
                 className={`px-1.5 py-0.5 rounded-full border border-current/20 ${
-                  theme === 'dark' ? 'bg-white/5' : 'bg-black/5'
+                  palette.isDark ? 'bg-white/5' : 'bg-black/5'
                 }`}
                 data-achievement="best-streak"
               >
@@ -696,7 +711,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
             {bestDay7 >= 90 && (
               <span
                 className={`px-1.5 py-0.5 rounded-full border border-current/20 ${
-                  theme === 'dark' ? 'bg-white/5' : 'bg-black/5'
+                  palette.isDark ? 'bg-white/5' : 'bg-black/5'
                 }`}
                 data-achievement="best-day"
               >
@@ -706,7 +721,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
             {cyclesToday >= 4 && (
               <span
                 className={`px-1.5 py-0.5 rounded-full border border-current/20 ${
-                  theme === 'dark' ? 'bg-white/5' : 'bg-black/5'
+                  palette.isDark ? 'bg-white/5' : 'bg-black/5'
                 }`}
                 data-achievement="cycles-today"
               >
@@ -716,7 +731,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
             {total7 >= 600 && (
               <span
                 className={`px-1.5 py-0.5 rounded-full border border-current/20 ${
-                  theme === 'dark' ? 'bg-white/5' : 'bg-black/5'
+                  palette.isDark ? 'bg-white/5' : 'bg-black/5'
                 }`}
                 data-achievement="10h-week"
               >

@@ -8,6 +8,7 @@ import {
 } from './clock-constants';
 import { playClack, unlockAudio } from './audio';
 import type { ClockColor, ClockSize, ClockStyle, ThemeName } from './clock-constants';
+import { THEMES } from './theme-presets';
 import { useCasioState, type CasioHandle } from './use-casio-state';
 
 // --------------------------------------------------------------------------
@@ -1041,6 +1042,10 @@ function FlipClock({
   // --fcc-digit-color: #ffffff, --fcc-divider-color: #ffffff66).
   // We tint by theme + selected color.
   const isPlain = safeColor === 'white' || safeColor === 'ink';
+  // Card background is "theme's dark card" so digits always read.
+  // For dark themes we use a deep neutral; for light themes we use
+  // a near-white card. 'claude' is special — its case is its own
+  // dark cream so we keep the original palette for that one.
   let cardBg: string;
   let digitColor: string;
   let dividerColor: string;
@@ -1049,7 +1054,7 @@ function FlipClock({
     digitColor = isPlain ? flipColor : '#faf6ef';
     dividerColor = '#faf6ef33';
   } else if (isPlain) {
-    if (theme === 'dark') {
+    if (THEMES[theme].isDark) {
       cardBg = '#0f181a';
       digitColor = '#ffffff';
       dividerColor = '#ffffff66';
@@ -1153,8 +1158,8 @@ export function WorldClock({
 
   const c = effectiveClockColor(color);
   const hex = getColor(c);
-  const label =
-    theme === 'dark' ? 'text-white/70' : theme === 'claude' ? 'text-[#3a2e1f]/70' : 'text-black/70';
+  const palette = THEMES[theme];
+  const label = palette.textMuted;
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-sm">
@@ -1230,9 +1235,9 @@ export function DateDisplay({
           year: 'numeric',
         });
 
-  const label =
-    theme === 'dark' ? 'text-white/60' : theme === 'claude' ? 'text-[#3a2e1f]/70' : 'text-black/70';
-  const main = theme === 'dark' ? 'text-white' : theme === 'claude' ? 'text-[#3a2e1f]' : 'text-black';
+  const palette = THEMES[theme];
+  const label = palette.textMuted;
+  const main = palette.text;
   // Timezone indicator. We render the short form (e.g. "WIB" or
   // "GMT+7") based on what Intl knows about the current zone. Falls
   // back to UTC offset if the locale doesn't expose a zone name.

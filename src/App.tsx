@@ -16,6 +16,7 @@ import {
   type ClockSize,
   type ThemeName,
 } from './widgets/clock-constants';
+import { THEMES, THEME_NAMES } from './widgets/theme-presets';
 import { Pomodoro } from './widgets/Pomodoro';
 import { Stopwatch } from './widgets/Stopwatch';
 import { Weather } from './widgets/Weather';
@@ -32,10 +33,14 @@ import { useT, useLocale } from './i18n';
 import { Calendar } from './widgets/Calendar';
 import { Draggable } from './widgets/Draggable';
 import { useAmbient } from './widgets/Ambient';
+import { Breathing } from './widgets/Breathing';
 
 type Layout = 'classic' | 'split' | 'minimal';
 
-const isDark = (t: ThemeName) => t === 'dark';
+// Back-compat helpers. New code should look up the theme via
+// `THEMES[t]` directly so a theme can be added without touching
+// every call site.
+const isDark = (t: ThemeName) => THEMES[t].isDark;
 const isClaude = (t: ThemeName) => t === 'claude';
 
 const SETTINGS_KEY = 'screensaver.settings.v2';
@@ -58,6 +63,7 @@ type PersistedSettings = {
   showDayProgress: boolean;
   showAlarms: boolean;
   showTimer: boolean;
+  showBreathing: boolean;
   flipSound: boolean;
   city: string;
   /** Ambient background sound: 'none' | 'rain' | 'forest' | 'white'. */
@@ -91,6 +97,7 @@ const DEFAULTS: PersistedSettings = {
   showDayProgress: true,
   showAlarms: true,
   showTimer: true,
+  showBreathing: false,
   flipSound: true,
   city: 'Jakarta',
   autoTheme: false,
@@ -133,6 +140,7 @@ export default function App() {
   const [showDayProgress, setShowDayProgress] = useState(initial.showDayProgress);
   const [showTimer, setShowTimer] = useState(initial.showTimer);
   const [showAlarms, setShowAlarms] = useState(initial.showAlarms);
+  const [showBreathing, setShowBreathing] = useState(initial.showBreathing);
   const [autoTheme, setAutoTheme] = useState<boolean>(initial.autoTheme);
   const [theme, setTheme] = useState<ThemeName>(initial.theme);
   // When autoTheme is on, override the user-picked theme based on
@@ -176,8 +184,6 @@ export default function App() {
   const [ambientVolume, setAmbientVolume] = useState<number>(initial.ambientVolume);
   const t = useT();
   const [locale, setLocale] = useLocale();
-  void locale;
-  void setLocale; // referenced via the Language toggle below
   // WorldClock shows the user's custom city list (default 5 if they
   // haven't added/removed any). The CitiesManager in the settings
   // panel and the live WorldClock widget both read/write the same
@@ -194,7 +200,7 @@ export default function App() {
       const snap: PersistedSettings = {
         layout, theme, clockStyle, clockColor, clockSize,
         showDate, showCalendar, showWorldClock, showQuote, showWeather,
-        showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
+        showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer, showBreathing,
         flipSound, city, autoTheme, dateLocale, dateFormat,
         autoLaunch, autoLaunchMs, wallpaper, wallpaperIntensity,
         ambient, ambientVolume,
@@ -206,7 +212,7 @@ export default function App() {
   }, [
     layout, theme, clockStyle, clockColor, clockSize,
     showDate, showCalendar, showWorldClock, showQuote, showWeather,
-    showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
+    showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer, showBreathing,
     flipSound, city, autoTheme, dateLocale, dateFormat,
     autoLaunch, autoLaunchMs, wallpaper, wallpaperIntensity,
     ambient, ambientVolume,
@@ -323,7 +329,8 @@ export default function App() {
     !showStopwatch &&
     !showPomodoro &&
     !showDayProgress &&
-    !showAlarms;
+    !showAlarms &&
+    !showBreathing;
 
   const turnOffAll = () => {
     setShowDate(false);
@@ -335,6 +342,7 @@ export default function App() {
     setShowDayProgress(false);
     setShowAlarms(false);
     setShowTimer(false);
+    setShowBreathing(false);
   };
 
   const resetSettings = () => {
@@ -355,6 +363,7 @@ export default function App() {
     setShowDayProgress(DEFAULTS.showDayProgress);
     setShowAlarms(DEFAULTS.showAlarms);
     setShowTimer(DEFAULTS.showTimer);
+    setShowBreathing(DEFAULTS.showBreathing);
     setFlipSound(DEFAULTS.flipSound);
     setCity(DEFAULTS.city);
     setAutoTheme(DEFAULTS.autoTheme);
@@ -375,37 +384,25 @@ export default function App() {
     return <SleepTimerOverlay show onWake={sleep.wake} />;
   }
 
+  const palette = THEMES[theme];
+
   return (
     <div
-      className={`min-h-screen w-screen relative overflow-hidden transition-[background-color,color] duration-700 ${
-        isDark(theme)
-          ? 'bg-black text-white'
-          : isClaude(theme)
-          ? 'text-[#3a2e1f]'
-          : 'bg-white text-black'
-      }`}
+      className={`min-h-screen w-screen relative overflow-hidden transition-[background-color,color] duration-700 ${palette.bodyClass}`}
       style={
-        isClaude(theme)
+        palette.bgColor
           ? {
-              backgroundColor: '#faf6ef',
-              backgroundImage:
-                'radial-gradient(at 20% 0%, rgba(217, 119, 87, 0.08) 0px, transparent 50%), radial-gradient(at 80% 100%, rgba(255, 184, 140, 0.10) 0px, transparent 50%)',
-              transition: 'background-color 700ms ease, background-image 700ms ease',
+              backgroundColor: palette.bgColor,
+              backgroundImage: palette.bgImage,
+              transition: palette.bgTransition,
             }
-          : { transition: 'background-color 700ms ease' }
+          : { transition: palette.bgTransition }
       }
     >
       {/* Subtle radial vignette */}
       <div
         className="absolute inset-0 pointer-events-none"
-        style={{
-          background:
-            isDark(theme)
-              ? 'radial-gradient(ellipse at center, rgba(255,255,255,0.03) 0%, transparent 60%)'
-              : isClaude(theme)
-              ? 'radial-gradient(ellipse at center, rgba(120, 80, 40, 0.04) 0%, transparent 60%)'
-              : 'radial-gradient(ellipse at center, rgba(0,0,0,0.03) 0%, transparent 60%)',
-        }}
+        style={{ background: palette.vignette }}
       />
 
       {/* Animated wallpaper layer — sits behind everything, fixed full-viewport.
@@ -581,11 +578,12 @@ export default function App() {
           <div className={`text-xs uppercase tracking-widest opacity-70 mb-3 pt-3 ${isDark(theme) ? 'border-white/15' : isClaude(theme) ? 'border-[#d4b896]/40' : 'border-black/15'}`}>
             {t('settings.section.theme')}
           </div>
-          <div className="grid grid-cols-3 gap-1 mb-4">
-            {(['dark', 'light', 'claude'] as ThemeName[]).map((themeId) => (
+          <div className="grid grid-cols-4 gap-1 mb-4">
+            {THEME_NAMES.map((themeId) => (
               <button
                 key={themeId}
                 onClick={() => setTheme(themeId)}
+                data-theme={themeId}
                 className={`px-2 py-2 rounded-lg text-xs transition-colors ${
                   theme === themeId
                     ? isDark(theme)
@@ -604,7 +602,15 @@ export default function App() {
                   ? t('settings.theme.dark')
                   : themeId === 'light'
                   ? t('settings.theme.light')
-                  : t('settings.theme.claude')}
+                  : themeId === 'claude'
+                  ? t('settings.theme.claude')
+                  : themeId === 'sunset'
+                  ? t('settings.theme.sunset')
+                  : themeId === 'forest'
+                  ? t('settings.theme.forest')
+                  : themeId === 'ocean'
+                  ? t('settings.theme.ocean')
+                  : t('settings.theme.paper')}
               </button>
             ))}
           </div>
@@ -982,6 +988,7 @@ export default function App() {
               { label: 'Pomodoro', val: showPomodoro, set: () => setShowPomodoro((v) => !v) },
               { label: 'Stopwatch', val: showStopwatch, set: () => setShowStopwatch((v) => !v) },
               { label: 'Timer', val: showTimer, set: () => setShowTimer((v) => !v) },
+              { label: 'Breathing', val: showBreathing, set: () => setShowBreathing((v) => !v) },
               { label: 'Weather', val: showWeather, set: () => setShowWeather((v) => !v) },
               { label: 'Day Progress', val: showDayProgress, set: () => setShowDayProgress((v) => !v) },
               { label: 'Alarms', val: showAlarms, set: () => setShowAlarms((v) => !v) },
@@ -1203,11 +1210,12 @@ export default function App() {
             </Draggable>
           )}
 
-          {(showPomodoro || showStopwatch || showDayProgress || showTimer) && (
+          {(showPomodoro || showStopwatch || showDayProgress || showTimer || showBreathing) && (
             <div className="flex flex-wrap items-start justify-center gap-12 mt-2">
               {showPomodoro && <Pomodoro theme={theme} />}
               {showStopwatch && <Stopwatch theme={theme} />}
               {showTimer && <Timer theme={theme} />}
+              {showBreathing && <Breathing theme={theme} />}
               {showDayProgress && <DayProgress theme={theme} city={city} />}
             </div>
           )}
