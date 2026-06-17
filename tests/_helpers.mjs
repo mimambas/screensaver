@@ -59,7 +59,16 @@ export async function newPage(browser) {
   await page.goto(BASE_URL, { waitUntil: 'networkidle2' });
   await page.evaluate(() => {
     try {
-      localStorage.clear();
+      // Clear our app's keys but PRESERVE language + any other keys
+      // that earlier tests seeded via evaluateOnNewDocument.
+      const keysToClear = [
+        'screensaver.settings.v2',
+        'screensaver.pomodoro.stats.v1',
+        'screensaver.pomodoro.v1',
+        'screensaver.worldclock.cities.v1',
+        'screensaver.draggable-positions.v1',
+      ];
+      for (const k of keysToClear) localStorage.removeItem(k);
     } catch {
       // ignore
     }

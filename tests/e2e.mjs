@@ -981,6 +981,71 @@ const tests = [
       assert(hasSingapore === false, 'Asia/Singapore should be gone after remove click');
     },
   },
+
+  // ── i18n (English / Indonesian) ─────────────────────────────────
+
+  {
+    name: 'i18n: switching to Indonesian translates settings dialog',
+    fn: async (page) => {
+      // Seed language preference BEFORE the page loads so the
+      // I18nProvider picks it up on mount. New document ensures
+      // the script runs before any app code on every page load.
+      await page.evaluateOnNewDocument(() => {
+        localStorage.setItem('screensaver.lang', 'id');
+      });
+      await page.reload({ waitUntil: 'networkidle2' });
+      // Open the settings dialog. With locale=id the aria-label is
+      // "Pengaturan", so we wait on that specifically rather than the
+      // English string.
+      await page.keyboard.press('s');
+      await page.waitForSelector('[role="dialog"][aria-label="Pengaturan"]', { timeout: 3000 });
+      const ariaLabel = await page.evaluate(() =>
+        document.querySelector('[role="dialog"]')?.getAttribute('aria-label'),
+      );
+      assertEq(ariaLabel, 'Pengaturan', 'dialog aria-label in Indonesian');
+      // The Layout section header should translate too.
+      const layoutHeader = await page.evaluate(() => {
+        const el = Array.from(document.querySelectorAll('div')).find(
+          (d) => /Tata Letak/.test(d.textContent ?? ''),
+        );
+        return !!el;
+      });
+      assert(layoutHeader, 'Layout header should be "Tata Letak" in Indonesian');
+    },
+  },
+
+  {
+    name: 'i18n: settings Language toggle persists to localStorage',
+    fn: async (page) => {
+      // We're now in Indonesian from the previous test (per-page
+      // localStorage persistence between tests). Click the English
+      // language button and verify both: the storage entry flips and
+      // a known English string shows up.
+      const enBtn = await page.$('button[data-lang="en"]');
+      if (!enBtn) {
+        // Settings dialog might have closed between tests — reopen.
+        await page.keyboard.press('s');
+        await page.waitForSelector('[role="dialog"]');
+        // Re-acquire after the dialog re-mounts.
+        await page.waitForSelector('button[data-lang="en"]');
+      }
+      await page.evaluate(() => {
+        const btn = document.querySelector('button[data-lang="en"]');
+        btn?.click();
+      });
+      // Wait for React to commit + persist.
+      await page.waitForFunction(
+        () => localStorage.getItem('screensaver.lang') === 'en',
+        { timeout: 3000 },
+      );
+      // The dialog should still be open with the new aria-label.
+      await page.waitForSelector('[role="dialog"][aria-label="Settings"]', { timeout: 3000 });
+      const ariaLabel = await page.evaluate(() =>
+        document.querySelector('[role="dialog"]')?.getAttribute('aria-label'),
+      );
+      assertEq(ariaLabel, 'Settings', 'dialog aria-label back to English');
+    },
+  },
 ];
 
 const { passed, total } = await runTests(tests);
