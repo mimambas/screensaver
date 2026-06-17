@@ -2,7 +2,7 @@
 
 A minimal fullscreen clock + widgets screensaver. React + TypeScript + Vite.
 
-**Live:** [screensaver-kappa.vercel.app](https://screensaver-kappa.vercel.app)
+**Live:** [vibescreensaver.vercel.app](https://vibescreensaver.vercel.app)
 
 ## Features
 
