@@ -1165,6 +1165,56 @@ const tests = [
       assertEq(cell.minutes, '15', 'long break minutes');
     },
   },
+
+  {
+    name: 'heatmap: cell title attr includes weekday, hour, minutes, mode',
+    fn: async (page) => {
+      // Seed today at hour 9 with mode='work' 50min. The tooltip
+      // should read e.g. "Tue 09:00 · 50m work" — we assert on
+      // substrings because the weekday string is locale-derived
+      // (en-US: "Tue", id-ID: "Sel"). We pin to the headless
+      // navigator.language which is en-US by default in puppeteer.
+      await page.evaluate(() => {
+        const today = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const key = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        const stats = {};
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(today);
+          d.setDate(today.getDate() - i);
+          const hourly = new Array(24).fill(null).map(() => ({ minutes: 0, mode: 'work' }));
+          if (i === 0) hourly[9] = { minutes: 50, mode: 'work' };
+          stats[key(d)] = { minutes: 50, cycles: 1, hourly };
+        }
+        localStorage.setItem('screensaver.pomodoro.stats.v1', JSON.stringify(stats));
+      });
+      await page.reload({ waitUntil: 'networkidle2' });
+      await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button')).find(
+          (b) => /stats/.test(b.textContent ?? ''),
+        );
+        btn?.click();
+      });
+      await page.waitForSelector('[data-range="7d"]', { timeout: 3000 });
+      await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button')).find(
+          (b) => /heatmap/.test(b.textContent ?? ''),
+        );
+        btn?.click();
+      });
+      await page.waitForSelector('[aria-label*="7 days × 24 hours"]', { timeout: 3000 });
+      const title = await page.evaluate(() => {
+        const row = document.querySelector('[data-day-row="6"]');
+        const c = row?.querySelector('[data-hour="9"]');
+        return c?.getAttribute('title');
+      });
+      assert(title, 'cell at hour 9 should have a title');
+      // Stable substrings: hour bucket, minutes, mode
+      assertMatch(title, /09:00/, 'title should contain 09:00');
+      assertMatch(title, /50m/, 'title should contain 50m');
+      assertMatch(title, /work/, 'title should contain work');
+    },
+  },
 ];
 
 const { passed, total } = await runTests(tests);

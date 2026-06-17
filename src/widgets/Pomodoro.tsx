@@ -336,16 +336,28 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
   // Each row is one day; we use the LAST 7 days of last30 so the
   // newest day is at the bottom (matches GitHub-style heatmaps).
   const hourly7 = useMemo(() => {
-    return last30.slice(-7).map((d, i) => ({
-      dayIdx: i, // 0 = oldest of the 7, 6 = today
-      key: d.key,
-      label: d.label,
-      isToday: d.isToday,
-      hourly: d.hourly.length === 24
-        ? d.hourly
-        : new Array(24).fill(null).map(() => ({ minutes: 0, mode: 'work' as HourlyMode })),
-      totalMinutes: (d.hourly.length === 24 ? d.hourly : []).reduce((s, n) => s + (n?.minutes ?? 0), 0),
-    }));
+    return last30.slice(-7).map((d, i) => {
+      // Parse the day key (YYYY-MM-DD) back to a Date so we can
+      // render the weekday name in the cell tooltip. The label
+      // string (e.g. "M") is too terse for a hover tooltip.
+      const [yy, mm, dd] = d.key.split('-').map(Number);
+      const date = new Date(yy, mm - 1, dd);
+      const weekday = date.toLocaleDateString(undefined, { weekday: 'short' });
+      return {
+        dayIdx: i, // 0 = oldest of the 7, 6 = today
+        key: d.key,
+        label: d.label,
+        weekday,
+        isToday: d.isToday,
+        hourly: d.hourly.length === 24
+          ? d.hourly
+          : new Array(24).fill(null).map(() => ({ minutes: 0, mode: 'work' as HourlyMode })),
+        totalMinutes: (d.hourly.length === 24 ? d.hourly : []).reduce(
+          (s, n) => s + (n?.minutes ?? 0),
+          0,
+        ),
+      };
+    });
   }, [last30]);
   // Largest single-cell value, used to scale cell opacity. We use
   // max(60) as a floor so 1 hour of focus already reads as a full
@@ -763,6 +775,11 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
                       data-hour={h}
                       data-minutes={cell.minutes}
                       data-mode={cell.mode}
+                      title={
+                        cell.minutes > 0
+                          ? `${d.weekday} ${String(h).padStart(2, '0')}:00 · ${cell.minutes}m ${cell.mode === 'work' ? t('pomodoro.mode.workShort') : cell.mode === 'short' ? t('pomodoro.mode.shortShort') : t('pomodoro.mode.longShort')}`
+                          : `${d.weekday} ${String(h).padStart(2, '0')}:00`
+                      }
                       className={`h-2 rounded-[1px] ${heatmapCellBg(cell.mode)}`}
                       style={{
                         opacity:
