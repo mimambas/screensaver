@@ -1046,6 +1046,74 @@ const tests = [
       assertEq(ariaLabel, 'Settings', 'dialog aria-label back to English');
     },
   },
+
+  // ── Phase-aware heatmap ─────────────────────────────────────────
+
+  {
+    name: 'heatmap: cell data-mode reflects seeded phase (work vs short)',
+    fn: async (page) => {
+      // Seed 7 days of stats: yesterday (day-row 5) at hour 9 has
+      // mode='short' 20min, today (day-row 6) at hour 9 has
+      // mode='work' 60min. We assert the data-mode attribute on
+      // each rendered cell.
+      await page.evaluate(() => {
+        const today = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const key = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        const stats = {};
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(today);
+          d.setDate(today.getDate() - i);
+          const hourly = new Array(24).fill(null).map(() => ({ minutes: 0, mode: 'work' }));
+          if (i === 0) {
+            // Today, hour 9, work
+            hourly[9] = { minutes: 60, mode: 'work' };
+          } else if (i === 1) {
+            // Yesterday, hour 9, short break
+            hourly[9] = { minutes: 20, mode: 'short' };
+          }
+          stats[key(d)] = { minutes: hourly[9].minutes, cycles: 1, hourly };
+        }
+        localStorage.setItem('screensaver.pomodoro.stats.v1', JSON.stringify(stats));
+      });
+      await page.reload({ waitUntil: 'networkidle2' });
+      // Open stats + heatmap.
+      await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button')).find(
+          (b) => /stats/.test(b.textContent ?? ''),
+        );
+        btn?.click();
+      });
+      await page.waitForSelector('[data-range="7d"]', { timeout: 3000 });
+      await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button')).find(
+          (b) => /heatmap/.test(b.textContent ?? ''),
+        );
+        btn?.click();
+      });
+      await page.waitForSelector('[aria-label*="7 days × 24 hours"]', { timeout: 3000 });
+      // Read the today row (day 6) hour 9 cell — should be mode=work.
+      const today = await page.evaluate(() => {
+        const row = document.querySelector('[data-day-row="6"]');
+        if (!row) return null;
+        const cell = row.querySelector('[data-hour="9"]');
+        return cell ? { mode: cell.getAttribute('data-mode'), minutes: cell.getAttribute('data-minutes') } : null;
+      });
+      assert(today, 'today cell at hour 9 should exist');
+      assertEq(today.mode, 'work', 'today mode');
+      assertEq(today.minutes, '60', 'today minutes');
+      // Read yesterday (day 5) hour 9 cell — should be mode=short.
+      const yesterday = await page.evaluate(() => {
+        const row = document.querySelector('[data-day-row="5"]');
+        if (!row) return null;
+        const cell = row.querySelector('[data-hour="9"]');
+        return cell ? { mode: cell.getAttribute('data-mode'), minutes: cell.getAttribute('data-minutes') } : null;
+      });
+      assert(yesterday, 'yesterday cell at hour 9 should exist');
+      assertEq(yesterday.mode, 'short', 'yesterday mode');
+      assertEq(yesterday.minutes, '20', 'yesterday minutes');
+    },
+  },
 ];
 
 const { passed, total } = await runTests(tests);

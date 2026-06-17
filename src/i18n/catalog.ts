@@ -112,6 +112,9 @@ export const catalog: Catalog = {
     en: 'opacity ∝ minutes · today has ring',
     id: 'opacity sebanding dengan menit · hari ini di-ring',
   },
+  'pomodoro.heatmapLegend.work': { en: 'work', id: 'fokus' },
+  'pomodoro.heatmapLegend.short': { en: 'short break', id: 'istirahat pendek' },
+  'pomodoro.heatmapLegend.long': { en: 'long break', id: 'istirahat panjang' },
   'pomodoro.cyclesCompleted': {
     en: '{n} focus sessions completed',
     id: '{n} sesi fokus selesai',

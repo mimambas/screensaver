@@ -28,10 +28,14 @@ type PersistedState = {
 
 // Daily stats: { 'YYYY-MM-DD': focusMinutes }. We keep ~30 days of
 // history for a small weekly bar chart. `cycles` is per-day completed
-// work sessions; `hourly` is a 24-element array of minutes indexed
-// by hour-of-day, powering the heatmap. Older entries that pre-date
-// any field default sensibly (cycles=0, hourly=[]).
-type Stats = Record<string, { minutes: number; cycles: number; hourly: number[] }>;
+// work sessions; `hourly` is a 24-element array of {minutes, mode}
+// indexed by hour-of-day, powering the heatmap. `mode` is the
+// dominant phase for that cell — for v1 we only ever log 'work'
+// (we don't track break minutes in hourly), so older entries
+// migrate to mode='work' by default.
+type HourlyMode = 'work' | 'short' | 'long';
+type HourlyCell = { minutes: number; mode: HourlyMode };
+type Stats = Record<string, { minutes: number; cycles: number; hourly: HourlyCell[] }>;
 
 function loadStats(): Stats {
   if (typeof window === 'undefined') return {};
@@ -44,16 +48,39 @@ function loadStats(): Stats {
     // v1: { 'YYYY-MM-DD': number }
     // v2: { 'YYYY-MM-DD': { minutes, cycles } }
     // v3: { 'YYYY-MM-DD': { minutes, cycles, hourly: number[24] } }
+    // v4: { 'YYYY-MM-DD': { minutes, cycles, hourly: HourlyCell[24] } }
     const out: Stats = {};
     for (const [k, v] of Object.entries(parsed)) {
       if (typeof v === 'number') {
         out[k] = { minutes: v, cycles: 0, hourly: [] };
       } else if (v && typeof v === 'object') {
-        const entry = v as { minutes?: number; cycles?: number; hourly?: number[] };
+        const entry = v as {
+          minutes?: number;
+          cycles?: number;
+          hourly?: unknown;
+        };
+        let hourly: HourlyCell[] = [];
+        if (Array.isArray(entry.hourly) && entry.hourly.length === 24) {
+          hourly = entry.hourly.map((cell: unknown) => {
+            // v3 shape: plain number (minutes). Default to 'work'.
+            if (typeof cell === 'number') {
+              return { minutes: cell, mode: 'work' as HourlyMode };
+            }
+            // v4 shape: { minutes, mode }.
+            if (cell && typeof cell === 'object') {
+              const c = cell as { minutes?: number; mode?: HourlyMode };
+              return {
+                minutes: typeof c.minutes === 'number' ? c.minutes : 0,
+                mode: c.mode ?? 'work',
+              };
+            }
+            return { minutes: 0, mode: 'work' as HourlyMode };
+          });
+        }
         out[k] = {
           minutes: entry.minutes ?? 0,
           cycles: entry.cycles ?? 0,
-          hourly: Array.isArray(entry.hourly) && entry.hourly.length === 24 ? entry.hourly : [],
+          hourly,
         };
       }
     }
@@ -172,8 +199,19 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
               const k = dayKey(new Date());
               const now = new Date();
               const prev = s[k] || { minutes: 0, cycles: 0, hourly: [] };
-              const hourly = prev.hourly.length === 24 ? [...prev.hourly] : new Array(24).fill(0);
-              hourly[now.getHours()] += workMin;
+              // Build a fresh 24-cell array if the previous entry is
+              // the empty default. We always rebuild a copy of the
+              // array so the reducer stays pure (no in-place mutation).
+              const hourly: HourlyCell[] = prev.hourly.length === 24
+                ? prev.hourly.map((c) => ({ ...c }))
+                : new Array(24).fill(null).map(() => ({ minutes: 0, mode: 'work' as HourlyMode }));
+              const cell = hourly[now.getHours()];
+              hourly[now.getHours()] = {
+                minutes: cell.minutes + workMin,
+                // v1: we only ever log work sessions in hourly. Tracking
+                // break minutes is out of scope.
+                mode: 'work',
+              };
               return { ...s, [k]: { minutes: prev.minutes + workMin, cycles: prev.cycles + 1, hourly } };
             });
           }
@@ -211,7 +249,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
     label: string;
     minutes: number;
     cycles: number;
-    hourly: number[];
+    hourly: HourlyCell[];
     isToday: boolean;
   };
   const last30 = useMemo<Day[]>(() => {
@@ -283,8 +321,10 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
       key: d.key,
       label: d.label,
       isToday: d.isToday,
-      hourly: d.hourly.length === 24 ? d.hourly : new Array(24).fill(0),
-      totalMinutes: (d.hourly.length === 24 ? d.hourly : []).reduce((s, n) => s + n, 0),
+      hourly: d.hourly.length === 24
+        ? d.hourly
+        : new Array(24).fill(null).map(() => ({ minutes: 0, mode: 'work' as HourlyMode })),
+      totalMinutes: (d.hourly.length === 24 ? d.hourly : []).reduce((s, n) => s + (n?.minutes ?? 0), 0),
     }));
   }, [last30]);
   // Largest single-cell value, used to scale cell opacity. We use
@@ -292,12 +332,12 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
   // cell — otherwise sparse data looks almost invisible.
   const maxCellMinutes = useMemo(() => {
     let m = 0;
-    for (const d of hourly7) for (const v of d.hourly) if (v > m) m = v;
+    for (const d of hourly7) for (const v of d.hourly) if (v.minutes > m) m = v.minutes;
     return Math.max(60, m);
   }, [hourly7]);
   const hoursFocused7 = useMemo(() => {
     let n = 0;
-    for (const d of hourly7) for (const v of d.hourly) if (v > 0) n++;
+    for (const d of hourly7) for (const v of d.hourly) if (v.minutes > 0) n++;
     return n;
   }, [hourly7]);
   // Toggle between 7d and 30d view. Default 7d for tighter signal.
@@ -343,6 +383,16 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
       : mode === 'short'
       ? theme === 'dark' ? 'bg-emerald-400/70' : 'bg-emerald-500/70'
       : theme === 'dark' ? 'bg-sky-400/70' : 'bg-sky-500/70';
+
+  // Phase colors for heatmap cells. Same hue family as the timer
+  // digits above so the visual language is consistent: work = warm/
+  // neutral (the current fillBg), short = emerald, long = sky.
+  const heatmapCellBg = (m: HourlyMode) =>
+    m === 'work'
+      ? fillBg
+      : m === 'short'
+      ? theme === 'dark' ? 'bg-emerald-400' : theme === 'claude' ? 'bg-emerald-600' : 'bg-emerald-500'
+      : theme === 'dark' ? 'bg-sky-400' : theme === 'claude' ? 'bg-sky-600' : 'bg-sky-500';
   // Color of the digit per phase. Tells the user at a glance which
   // mode the timer is in.
   const digitColor =
@@ -685,16 +735,20 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
                   <span className="text-[8px] opacity-60 text-right pr-0.5">
                     {d.label}
                   </span>
-                  {d.hourly.map((mins, h) => (
+                  {d.hourly.map((cell, h) => (
                     <span
                       key={h}
                       data-cell
                       data-day={d.dayIdx}
                       data-hour={h}
-                      data-minutes={mins}
-                      className={`h-2 rounded-[1px] ${fillBg}`}
+                      data-minutes={cell.minutes}
+                      data-mode={cell.mode}
+                      className={`h-2 rounded-[1px] ${heatmapCellBg(cell.mode)}`}
                       style={{
-                        opacity: mins > 0 ? Math.max(0.15, mins / maxCellMinutes) : 0,
+                        opacity:
+                          cell.minutes > 0
+                            ? Math.max(0.15, cell.minutes / maxCellMinutes)
+                            : 0,
                       }}
                     />
                   ))}
@@ -702,6 +756,22 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
               ))}
               <div className={`text-[9px] opacity-50 mt-0.5 ${labelClass}`}>
                 {t('pomodoro.heatmapHint')}
+              </div>
+              {/* Phase legend — one swatch per phase, same color as the
+                  cells. Helps the user decode the heatmap at a glance. */}
+              <div className="flex items-center gap-2 mt-1 text-[9px] opacity-70">
+                <span className="flex items-center gap-1">
+                  <span className={`inline-block w-2 h-2 rounded-sm ${heatmapCellBg('work')}`} />
+                  {t('pomodoro.heatmapLegend.work')}
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className={`inline-block w-2 h-2 rounded-sm ${heatmapCellBg('short')}`} />
+                  {t('pomodoro.heatmapLegend.short')}
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className={`inline-block w-2 h-2 rounded-sm ${heatmapCellBg('long')}`} />
+                  {t('pomodoro.heatmapLegend.long')}
+                </span>
               </div>
             </div>
           )}
