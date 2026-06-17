@@ -711,6 +711,73 @@ const tests = [
       assert(blobCount === 4, `expected 4 mesh blobs, got ${blobCount}`);
     },
   },
+
+  // ── Clock color picker ──────────────────────────────────────────
+
+  {
+    name: 'clock color: 11 swatches render in the picker grid',
+    fn: async (page) => {
+      // Open settings.
+      const dialogOpen = await page.evaluate(() =>
+        !!document.querySelector('[role="dialog"][aria-label="Settings"]'),
+      );
+      if (!dialogOpen) {
+        await page.keyboard.press('s');
+        await page.waitForSelector('[role="dialog"][aria-label="Settings"]', { timeout: 3000 });
+      }
+      const swatchCount = await page.evaluate(
+        () => document.querySelectorAll('button[data-color]').length,
+      );
+      assert(
+        swatchCount === 11,
+        `expected 11 swatches (white, ink, amber, green, cyan, red, pink, mint, lavender, peach, gold), got ${swatchCount}`,
+      );
+    },
+  },
+
+  {
+    name: 'clock color: clicking mint marks the button aria-pressed',
+    fn: async (page) => {
+      // Make sure the settings dialog is open. Prior tests may have
+      // closed it on backdrop click.
+      const dialogOpen = await page.evaluate(() =>
+        !!document.querySelector('[role="dialog"][aria-label="Settings"]'),
+      );
+      if (!dialogOpen) {
+        await page.keyboard.press('s');
+        await page.waitForSelector('[role="dialog"][aria-label="Settings"]', { timeout: 3000 });
+      }
+      await page.evaluate(() => {
+        const btn = document.querySelector('button[data-color="mint"]');
+        btn?.click();
+      });
+      // Wait for React to commit the new state.
+      await page.waitForFunction(
+        () => {
+          const btn = document.querySelector('button[data-color="mint"]');
+          return btn?.getAttribute('aria-pressed') === 'true';
+        },
+        { timeout: 3000 },
+      );
+      const pressed = await page.evaluate(() => {
+        const btn = document.querySelector('button[data-color="mint"]');
+        return btn?.getAttribute('aria-pressed') === 'true';
+      });
+      assert(pressed, 'mint swatch should be aria-pressed after click');
+      // The clock digits' color should also have updated. We sample
+      // the digital-clock container and check at least one descendant
+      // has the mint hex (#5eead4) as its color.
+      const colorApplied = await page.evaluate(() => {
+        const all = Array.from(document.querySelectorAll('span, div'));
+        return all.some((el) => {
+          const c = getComputedStyle(el).color;
+          // rgb(94, 234, 212) is #5eead4
+          return c === 'rgb(94, 234, 212)';
+        });
+      });
+      assert(colorApplied, 'mint color should appear on the clock digits');
+    },
+  },
 ];
 
 const { passed, total } = await runTests(tests);

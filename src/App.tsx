@@ -831,10 +831,15 @@ export default function App() {
             ))}
           </div>
 
-          <div className="text-xs uppercase tracking-widest opacity-70 mb-3">
-            Clock Color
+          <div className="flex items-baseline justify-between mb-3">
+            <div className="text-xs uppercase tracking-widest opacity-70">
+              Clock Color
+            </div>
+            <div className="text-[10px] opacity-50">
+              {CLOCK_COLORS.find((c) => c.id === clockColor)?.label ?? clockColor}
+            </div>
           </div>
-          <div className="grid grid-cols-3 gap-1 mb-1">
+          <div className="grid grid-cols-6 gap-1.5 mb-4">
             {CLOCK_COLORS.map((c) => {
               // Contrast hint: if user picks white on light theme, or ink on
               // dark theme, the digits will be invisible. Don't block the
@@ -845,37 +850,37 @@ export default function App() {
               return (
                 <button
                   key={c.id}
+                  type="button"
                   onClick={() => setClockColor(c.id)}
                   aria-pressed={clockColor === c.id}
-                  title={poorContrast ? 'May be hard to read on this theme' : undefined}
-                  className={`flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition-colors ${
+                  aria-label={c.label}
+                  data-color={c.id}
+                  data-poor-contrast={poorContrast ? '1' : '0'}
+                  title={
+                    poorContrast
+                      ? `${c.label} — may be hard to read on this theme`
+                      : c.label
+                  }
+                  className={`aspect-square rounded-lg transition-transform border ${
                     clockColor === c.id
                       ? isDark(theme)
-                        ? 'bg-white/15 text-white'
+                        ? 'ring-2 ring-white/80 scale-105'
                         : isClaude(theme)
-                        ? 'bg-[#e8dcc4] text-[#3a2e1f]'
-                        : 'bg-black/15 text-black'
-                      : isDark(theme)
-                      ? 'hover:bg-white/10 text-white/80'
-                      : isClaude(theme)
-                      ? 'hover:bg-[#f0e6d2] text-[#3a2e1f]/80'
-                      : 'hover:bg-black/10 text-black/80'
+                        ? 'ring-2 ring-[#3a2e1f]/70 scale-105'
+                        : 'ring-2 ring-black/70 scale-105'
+                      : 'hover:scale-110'
                   }`}
-                >
-                  <span
-                    className="w-3 h-3 rounded-full shrink-0"
-                    style={{ backgroundColor: c.hex, boxShadow: `0 0 8px ${c.hex}` }}
-                  />
-                  <span className="truncate">{c.label}</span>
-                  {poorContrast && (
-                    <span className="ml-auto text-[10px] opacity-60" aria-hidden>⚠</span>
-                  )}
-                </button>
+                  style={{
+                    backgroundColor: c.hex,
+                    // Subtle inner border on light colors so they don't
+                    // disappear against light theme backdrops.
+                    borderColor: c.id === 'white' || c.id === 'gold' || c.id === 'lavender' || c.id === 'peach' || c.id === 'mint'
+                      ? 'rgba(0,0,0,0.15)'
+                      : 'transparent',
+                  }}
+                />
               );
             })}
-          </div>
-          <div className={`text-[10px] opacity-50 mb-4 ${isDark(theme) ? 'text-white' : 'text-black'}`}>
-            ⚠ = may be hard to read on this theme
           </div>
 
           <div className="text-xs uppercase tracking-widest opacity-70 mb-3">

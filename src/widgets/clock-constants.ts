@@ -1,5 +1,16 @@
 export type ClockStyle = 'digital' | 'analog' | 'retro' | 'flip' | 'casio';
-export type ClockColor = 'white' | 'ink' | 'amber' | 'green' | 'cyan' | 'red' | 'pink';
+export type ClockColor =
+  | 'white'
+  | 'ink'
+  | 'amber'
+  | 'green'
+  | 'cyan'
+  | 'red'
+  | 'pink'
+  | 'mint'
+  | 'lavender'
+  | 'peach'
+  | 'gold';
 /** Continuous scale multiplier, 0.5 .. 3.0, step 0.1 */
 export type ClockSize = number;
 export type ThemeName = 'dark' | 'light' | 'claude';
@@ -26,6 +37,10 @@ export const CLOCK_COLORS: { id: ClockColor; label: string; hex: string }[] = [
   { id: 'cyan', label: 'Cyan', hex: '#00e5ff' },
   { id: 'red', label: 'Red', hex: '#ff3344' },
   { id: 'pink', label: 'Pink', hex: '#ff66cc' },
+  { id: 'mint', label: 'Mint', hex: '#5eead4' },
+  { id: 'lavender', label: 'Lavender', hex: '#c4b5fd' },
+  { id: 'peach', label: 'Peach', hex: '#fdba74' },
+  { id: 'gold', label: 'Gold', hex: '#fde047' },
 ];
 
 export function getColor(color: ClockColor): string {
