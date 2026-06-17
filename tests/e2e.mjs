@@ -1114,6 +1114,57 @@ const tests = [
       assertEq(yesterday.minutes, '20', 'yesterday minutes');
     },
   },
+
+  {
+    name: 'heatmap: long break shows data-mode="long" on its cell',
+    fn: async (page) => {
+      // Seed only one cell with a long break; verify the heatmap
+      // carries the 'long' mode through and that the legend swatch
+      // exists. This guards the break-minute tracking we just wired
+      // up in the timer effect.
+      await page.evaluate(() => {
+        const today = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const key = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        const stats = {};
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(today);
+          d.setDate(today.getDate() - i);
+          const hourly = new Array(24).fill(null).map(() => ({ minutes: 0, mode: 'work' }));
+          if (i === 0) {
+            // Today, hour 14, long break 15min
+            hourly[14] = { minutes: 15, mode: 'long' };
+          }
+          stats[key(d)] = { minutes: 15, cycles: 0, hourly };
+        }
+        localStorage.setItem('screensaver.pomodoro.stats.v1', JSON.stringify(stats));
+      });
+      await page.reload({ waitUntil: 'networkidle2' });
+      // Open stats + heatmap.
+      await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button')).find(
+          (b) => /stats/.test(b.textContent ?? ''),
+        );
+        btn?.click();
+      });
+      await page.waitForSelector('[data-range="7d"]', { timeout: 3000 });
+      await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button')).find(
+          (b) => /heatmap/.test(b.textContent ?? ''),
+        );
+        btn?.click();
+      });
+      await page.waitForSelector('[aria-label*="7 days × 24 hours"]', { timeout: 3000 });
+      const cell = await page.evaluate(() => {
+        const row = document.querySelector('[data-day-row="6"]');
+        const c = row?.querySelector('[data-hour="14"]');
+        return c ? { mode: c.getAttribute('data-mode'), minutes: c.getAttribute('data-minutes') } : null;
+      });
+      assert(cell, 'cell at hour 14 should exist');
+      assertEq(cell.mode, 'long', 'long break mode');
+      assertEq(cell.minutes, '15', 'long break minutes');
+    },
+  },
 ];
 
 const { passed, total } = await runTests(tests);

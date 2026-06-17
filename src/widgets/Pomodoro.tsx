@@ -208,11 +208,31 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
               const cell = hourly[now.getHours()];
               hourly[now.getHours()] = {
                 minutes: cell.minutes + workMin,
-                // v1: we only ever log work sessions in hourly. Tracking
-                // break minutes is out of scope.
                 mode: 'work',
               };
               return { ...s, [k]: { minutes: prev.minutes + workMin, cycles: prev.cycles + 1, hourly } };
+            });
+          }
+          // v2: also track break minutes in hourly. We attribute the
+          // break to its completion hour (same convention as work
+          // sessions). We do NOT increment `cycles` for breaks — that
+          // count is "completed work sessions" and stays accurate.
+          if (prev === 'short' || prev === 'long') {
+            const breakMin = prev === 'short' ? shortMin : longMin;
+            const breakMode: HourlyMode = prev;
+            setStats((s) => {
+              const k = dayKey(new Date());
+              const now = new Date();
+              const prev = s[k] || { minutes: 0, cycles: 0, hourly: [] };
+              const hourly: HourlyCell[] = prev.hourly.length === 24
+                ? prev.hourly.map((c) => ({ ...c }))
+                : new Array(24).fill(null).map(() => ({ minutes: 0, mode: 'work' as HourlyMode }));
+              const cell = hourly[now.getHours()];
+              hourly[now.getHours()] = {
+                minutes: cell.minutes + breakMin,
+                mode: breakMode,
+              };
+              return { ...s, [k]: { ...prev, hourly } };
             });
           }
           setSeconds(DURATIONS[next]);
