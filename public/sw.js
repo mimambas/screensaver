@@ -82,3 +82,42 @@ self.addEventListener('fetch', (event) => {
     }),
   );
 });
+
+// ── Alarm notifications ──────────────────────────────────────────
+// Handler for clicks on alarm notifications. We focus the existing
+// tab if there's a client, or open a new one. The client-side code
+// reads `event.notification.data` (set via showNotification) and
+// applies the snooze — but the common path is just "user clicked
+// to dismiss and see the screensaver", so we focus/clone the
+// window and close the notification.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.snoozeUrl) || '/';
+  event.waitUntil(
+    (async () => {
+      const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      // Find an existing tab on this origin.
+      const existing = all.find((c) => new URL(c.url).origin === self.location.origin);
+      if (existing) {
+        // Send a message so the client can apply the snooze/ack.
+        existing.postMessage({
+          type: 'alarm-notification-click',
+          alarmId: event.notification.tag,
+          targetUrl,
+        });
+        // Focus + navigate (in case the tab is on a different page).
+        try {
+          await existing.focus();
+          if ('navigate' in existing) {
+            await (existing).navigate(targetUrl);
+          }
+        } catch {
+          /* focus may be blocked; fall through */
+        }
+      } else {
+        // No tab open — open one.
+        await self.clients.openWindow(targetUrl);
+      }
+    })(),
+  );
+});

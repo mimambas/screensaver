@@ -3,6 +3,10 @@ import { Bell, BellOff, Plus, Trash2, X } from 'lucide-react';
 import { playChime, unlockAudio } from './audio';
 import type { ThemeName } from './clock-constants';
 import { useT } from '../i18n';
+import {
+  showAlarmNotification,
+  useNotificationPermission,
+} from '../lib/notifications';
 
 interface Alarm {
   id: string;
@@ -78,6 +82,31 @@ export function AlarmList({
   const [showAdd, setShowAdd] = useState(false);
   const [firingId, setFiringId] = useState<string | null>(null);
   const flashRef = useRef<number | null>(null);
+  // Notification permission state — the value is unused at the
+  // component level (settings panel may surface a toggle) but
+  // registering the hook keeps the SW alive.
+  const [notificationStatus] = useNotificationPermission();
+
+  // Listen for alarm-notification-click messages from the SW (sent
+  // when the user taps a fired-alarm notification). We dismiss the
+  // firing state so the in-page UI doesn't double-stay.
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    const handler = (e: MessageEvent) => {
+      const data = e.data as { type?: string; alarmId?: string } | null;
+      if (data?.type === 'alarm-notification-click' && data.alarmId) {
+        // Tag is `alarm-<id>`; strip the prefix.
+        const id = data.alarmId.replace(/^alarm-/, '');
+        if (flashRef.current !== null) window.clearTimeout(flashRef.current);
+        setFiringId(null);
+        // Mark the alarm as last-fired-now so the in-page loop
+        // doesn't immediately re-fire it.
+        setAlarms((prev) => prev.map((a) => (a.id === id ? { ...a, lastFired: Date.now() } : a)));
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', handler);
+    return () => navigator.serviceWorker.removeEventListener('message', handler);
+  }, [notificationStatus]);
 
   // Persist
   useEffect(() => {
@@ -120,11 +149,23 @@ export function AlarmList({
           if (a.lastFired && stamp - a.lastFired < 30_000) return a;
           // Day filter: empty array = every day
           if (a.days.length > 0 && !a.days.includes(dow)) return a;
-          // FIRE!
+          // FIRE! Always play the chime in-page (it doesn't depend on
+          // visibility — useful for the foreground case too). The
+          // notification is best-effort; if it can't dispatch (tab
+          // visible, denied, unsupported), we just rely on the in-page
+          // flash + chime.
           playChime();
           setFiringId(a.id);
           if (flashRef.current !== null) window.clearTimeout(flashRef.current);
           flashRef.current = window.setTimeout(() => setFiringId(null), 30_000);
+          // Best-effort OS notification for background tabs.
+          void showAlarmNotification({
+            alarmId: a.id,
+            title: a.label || 'Alarm',
+            time: a.time,
+            label: a.label,
+            snoozeUrl: `/?snooze=${encodeURIComponent(a.id)}`,
+          });
           changed = true;
           // One-shot alarms auto-disable after firing.
           // Snooze target is cleared on fire.
@@ -354,6 +395,33 @@ function AddAlarmForm({
   const [label, setLabel] = useState('');
   const [days, setDays] = useState<number[]>([]); // empty = every day
   const [oneShot, setOneShot] = useState(false);
+  const [notifStatus, notifRequest] = useNotificationPermission();
+  const [testState, setTestState] = useState<'idle' | 'sent' | 'denied'>('idle');
+
+  const handleTest = async () => {
+    if (notifStatus === 'unsupported') {
+      setTestState('denied');
+      window.setTimeout(() => setTestState('idle'), 2000);
+      return;
+    }
+    if (notifStatus !== 'granted') {
+      const next = await notifRequest();
+      if (next !== 'granted') {
+        setTestState('denied');
+        window.setTimeout(() => setTestState('idle'), 2000);
+        return;
+      }
+    }
+    // Dispatch a one-off test notification.
+    const ok = await showAlarmNotification({
+      alarmId: `test-${Date.now()}`,
+      title: t('alarm.test.title'),
+      time,
+      label: t('alarm.test.body'),
+    });
+    setTestState(ok ? 'sent' : 'denied');
+    window.setTimeout(() => setTestState('idle'), 2000);
+  };
 
   return (
     <div
@@ -425,6 +493,37 @@ function AddAlarmForm({
         />
         one-shot (auto-disable after firing)
       </label>
+      {/* Notification permission test — lets the user verify
+          background alerts are working without waiting for an
+          alarm to actually fire. Only shown when the platform
+          supports the API at all. */}
+      {notifStatus !== 'unsupported' && (
+        <button
+          type="button"
+          onClick={handleTest}
+          data-testid="alarm-test-notification"
+          className={`w-full px-2 py-1 rounded text-[10px] transition-colors ${
+            theme === 'dark'
+              ? 'bg-white/10 hover:bg-white/20 text-white'
+              : theme === 'claude'
+              ? 'bg-[#d4b896]/30 hover:bg-[#d4b896]/50 text-[#3a2e1f]'
+              : 'bg-black/10 hover:bg-black/20 text-black'
+          }`}
+          title={
+            notifStatus === 'granted'
+              ? t('alarm.test.title')
+              : t('alarm.test.permission')
+          }
+        >
+          {testState === 'sent'
+            ? t('alarm.test.sent')
+            : testState === 'denied'
+            ? t('alarm.test.denied')
+            : notifStatus === 'granted'
+            ? t('alarm.test.sentHint')
+            : t('alarm.test.permission')}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => onAdd(time, label.trim(), days, { oneShot })}
