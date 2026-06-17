@@ -30,9 +30,10 @@ type PersistedState = {
 
 // Daily stats: { 'YYYY-MM-DD': focusMinutes }. We keep ~30 days of
 // history for a small weekly bar chart. `cycles` is per-day completed
-// work sessions; older entries that pre-date the field default to 0
-// (we can fall back to Math.floor(minutes / 25) at read time).
-type Stats = Record<string, { minutes: number; cycles: number }>;
+// work sessions; `hourly` is a 24-element array of minutes indexed
+// by hour-of-day, powering the heatmap. Older entries that pre-date
+// any field default sensibly (cycles=0, hourly=[]).
+type Stats = Record<string, { minutes: number; cycles: number; hourly: number[] }>;
 
 function loadStats(): Stats {
   if (typeof window === 'undefined') return {};
@@ -41,15 +42,21 @@ function loadStats(): Stats {
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) return {};
-    // Migrate the v1 shape (number values) to the current object shape.
-    // Old: { 'YYYY-MM-DD': 25 }  →  New: { 'YYYY-MM-DD': { minutes: 25, cycles: 0 } }
+    // Migrate older shapes to the current object shape.
+    // v1: { 'YYYY-MM-DD': number }
+    // v2: { 'YYYY-MM-DD': { minutes, cycles } }
+    // v3: { 'YYYY-MM-DD': { minutes, cycles, hourly: number[24] } }
     const out: Stats = {};
     for (const [k, v] of Object.entries(parsed)) {
       if (typeof v === 'number') {
-        out[k] = { minutes: v, cycles: 0 };
+        out[k] = { minutes: v, cycles: 0, hourly: [] };
       } else if (v && typeof v === 'object') {
-        const entry = v as { minutes?: number; cycles?: number };
-        out[k] = { minutes: entry.minutes ?? 0, cycles: entry.cycles ?? 0 };
+        const entry = v as { minutes?: number; cycles?: number; hourly?: number[] };
+        out[k] = {
+          minutes: entry.minutes ?? 0,
+          cycles: entry.cycles ?? 0,
+          hourly: Array.isArray(entry.hourly) && entry.hourly.length === 24 ? entry.hourly : [],
+        };
       }
     }
     return out;
@@ -159,11 +166,16 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
             setCyclesCompleted((c) => c + 1);
             // Log this work session's minutes + a completed cycle to
             // the daily stats. `cycles` powers the "X cycles today"
-            // achievement; minutes stays as before.
+            // achievement; `hourly` powers the heatmap. We sample the
+            // hour at completion time, not at start time — closer to
+            // what the user remembers as "the hour I finished".
             setStats((s) => {
               const k = dayKey(new Date());
-              const prev = s[k] || { minutes: 0, cycles: 0 };
-              return { ...s, [k]: { minutes: prev.minutes + workMin, cycles: prev.cycles + 1 } };
+              const now = new Date();
+              const prev = s[k] || { minutes: 0, cycles: 0, hourly: [] };
+              const hourly = prev.hourly.length === 24 ? [...prev.hourly] : new Array(24).fill(0);
+              hourly[now.getHours()] += workMin;
+              return { ...s, [k]: { minutes: prev.minutes + workMin, cycles: prev.cycles + 1, hourly } };
             });
           }
           setSeconds(DURATIONS[next]);
@@ -195,7 +207,14 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
 
   // Compute stats summaries. We always derive both the 7d and 30d
   // series from the same `stats` map so the toggle is instant.
-  type Day = { key: string; label: string; minutes: number; cycles: number; isToday: boolean };
+  type Day = {
+    key: string;
+    label: string;
+    minutes: number;
+    cycles: number;
+    hourly: number[];
+    isToday: boolean;
+  };
   const last30 = useMemo<Day[]>(() => {
     const out: Day[] = [];
     const today = new Date();
@@ -212,6 +231,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
         label: d.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 1),
         minutes: entry?.minutes ?? 0,
         cycles: entry?.cycles ?? 0,
+        hourly: entry?.hourly ?? [],
         isToday: i === 0,
       });
     }
@@ -255,8 +275,35 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
     return best;
   }, [last30]);
   const cyclesToday = last30[29]?.cycles ?? 0;
+  // 7-row × 24-column heatmap of focus minutes by day-of-week × hour.
+  // Each row is one day; we use the LAST 7 days of last30 so the
+  // newest day is at the bottom (matches GitHub-style heatmaps).
+  const hourly7 = useMemo(() => {
+    return last30.slice(-7).map((d, i) => ({
+      dayIdx: i, // 0 = oldest of the 7, 6 = today
+      key: d.key,
+      label: d.label,
+      isToday: d.isToday,
+      hourly: d.hourly.length === 24 ? d.hourly : new Array(24).fill(0),
+      totalMinutes: (d.hourly.length === 24 ? d.hourly : []).reduce((s, n) => s + n, 0),
+    }));
+  }, [last30]);
+  // Largest single-cell value, used to scale cell opacity. We use
+  // max(60) as a floor so 1 hour of focus already reads as a full
+  // cell — otherwise sparse data looks almost invisible.
+  const maxCellMinutes = useMemo(() => {
+    let m = 0;
+    for (const d of hourly7) for (const v of d.hourly) if (v > m) m = v;
+    return Math.max(60, m);
+  }, [hourly7]);
+  const hoursFocused7 = useMemo(() => {
+    let n = 0;
+    for (const d of hourly7) for (const v of d.hourly) if (v > 0) n++;
+    return n;
+  }, [hourly7]);
   // Toggle between 7d and 30d view. Default 7d for tighter signal.
   const [range, setRange] = useState<'7d' | '30d'>('7d');
+  const [showHeatmap, setShowHeatmap] = useState(false);
   const series = range === '7d' ? last7 : last30;
   const seriesMax = range === '7d' ? max7 : max30;
 
@@ -590,6 +637,68 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
               </span>
             )}
           </div>
+          {/* Heatmap — collapsible 7×24 grid of focus minutes by
+              hour-of-day. Cell opacity scales to the largest cell in
+              the window (floor: 60 min so 1 hr reads as a full cell). */}
+          <button
+            type="button"
+            onClick={() => setShowHeatmap((v) => !v)}
+            className={`text-[10px] ${labelClass} hover:opacity-80 self-start`}
+            aria-expanded={showHeatmap}
+          >
+            {showHeatmap ? '▾ heatmap' : '▸ heatmap'} · {hoursFocused7}h focused
+          </button>
+          {showHeatmap && (
+            <div
+              className="w-full flex flex-col gap-0.5"
+              aria-label="7 days × 24 hours focus heatmap"
+            >
+              {/* Hour ticks (above) — 0, 6, 12, 18, 23. Spans the
+                  first 24 columns; we use a 1fr grid with the first
+                  col reserved for weekday labels. */}
+              <div className="grid grid-cols-[12px_repeat(24,1fr)] gap-0.5 text-[8px] opacity-50">
+                <span />
+                {[0, 6, 12, 18].map((h) => (
+                  <span
+                    key={h}
+                    className="text-center"
+                    style={{ gridColumn: `${h + 2} / span 6` }}
+                  >
+                    {h}
+                  </span>
+                ))}
+              </div>
+              {hourly7.map((d) => (
+                <div
+                  key={d.key}
+                  className={`grid grid-cols-[12px_repeat(24,1fr)] gap-0.5 items-center ${
+                    d.isToday ? 'ring-1 ring-current rounded-sm' : ''
+                  }`}
+                  data-day-row={d.dayIdx}
+                >
+                  <span className="text-[8px] opacity-60 text-right pr-0.5">
+                    {d.label}
+                  </span>
+                  {d.hourly.map((mins, h) => (
+                    <span
+                      key={h}
+                      data-cell
+                      data-day={d.dayIdx}
+                      data-hour={h}
+                      data-minutes={mins}
+                      className={`h-2 rounded-[1px] ${fillBg}`}
+                      style={{
+                        opacity: mins > 0 ? Math.max(0.15, mins / maxCellMinutes) : 0,
+                      }}
+                    />
+                  ))}
+                </div>
+              ))}
+              <div className={`text-[9px] opacity-50 mt-0.5 ${labelClass}`}>
+                opacity ∝ minutes · today has ring
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

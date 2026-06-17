@@ -778,6 +778,108 @@ const tests = [
       assert(colorApplied, 'mint color should appear on the clock digits');
     },
   },
+
+  // ── Pomodoro hourly heatmap ─────────────────────────────────────
+
+  {
+    name: 'heatmap: 7x24 grid renders 168 cells when expanded',
+    fn: async (page) => {
+      // Seed enough days to have data in the heatmap.
+      await page.evaluate(() => {
+        const today = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const key = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        const stats = {};
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(today);
+          d.setDate(today.getDate() - i);
+          // Seed hour 9 with 50 minutes; rest empty.
+          const hourly = new Array(24).fill(0);
+          hourly[9] = 50;
+          stats[key(d)] = { minutes: 50, cycles: 2, hourly };
+        }
+        localStorage.setItem('screensaver.pomodoro.stats.v1', JSON.stringify(stats));
+      });
+      await page.reload({ waitUntil: 'networkidle2' });
+      // Open the stats panel.
+      await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button')).find(
+          (b) => /stats/.test(b.textContent ?? ''),
+        );
+        btn?.click();
+      });
+      await page.waitForSelector('[data-range="7d"]', { timeout: 3000 });
+      // Open the heatmap sub-section.
+      await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button')).find(
+          (b) => /heatmap/.test(b.textContent ?? ''),
+        );
+        btn?.click();
+      });
+      await page.waitForSelector('[aria-label*="7 days × 24 hours"]', { timeout: 3000 });
+      const cellCount = await page.evaluate(
+        () => document.querySelectorAll('[aria-label*="7 days × 24 hours"] [data-cell]').length,
+      );
+      assert(cellCount === 168, `expected 168 cells (7 days × 24 hours), got ${cellCount}`);
+    },
+  },
+
+  {
+    name: 'heatmap: seeded minutes map to data-minutes attrs',
+    fn: async (page) => {
+      // Re-seed (helpers wipe localStorage between tests).
+      await page.evaluate(() => {
+        const today = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const key = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        const stats = {};
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(today);
+          d.setDate(today.getDate() - i);
+          const hourly = new Array(24).fill(0);
+          hourly[9] = 50;
+          stats[key(d)] = { minutes: 50, cycles: 2, hourly };
+        }
+        localStorage.setItem('screensaver.pomodoro.stats.v1', JSON.stringify(stats));
+      });
+      await page.reload({ waitUntil: 'networkidle2' });
+      // Open the stats panel.
+      await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button')).find(
+          (b) => /stats/.test(b.textContent ?? ''),
+        );
+        btn?.click();
+      });
+      // Open the heatmap sub-section.
+      await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button')).find(
+          (b) => /heatmap/.test(b.textContent ?? ''),
+        );
+        btn?.click();
+      });
+      await page.waitForSelector('[aria-label*="7 days × 24 hours"] [data-day-row]', {
+        timeout: 3000,
+      });
+      // Read the cells and verify the seeded hour (9) has 50 minutes
+      // and other hours have 0 for the today row.
+      const cells = await page.evaluate(() => {
+        const root = document.querySelector('[aria-label*="7 days × 24 hours"]');
+        if (!root) return null;
+        // Today is the last day row (dayIdx 6).
+        const today = root.querySelector('[data-day-row="6"]');
+        if (!today) return null;
+        return Array.from(today.querySelectorAll('[data-cell]')).map((el) => ({
+          hour: el.getAttribute('data-hour'),
+          minutes: Number(el.getAttribute('data-minutes')),
+        }));
+      });
+      assert(cells, 'heatmap should be visible with today row');
+      assert(cells.length === 24, `expected 24 cells in today row, got ${cells.length}`);
+      const hour9 = cells.find((c) => c.hour === '9');
+      assert(hour9, 'hour 9 cell should exist');
+      assertEq(hour9.minutes, 50, 'hour 9 should be seeded with 50m');
+    },
+  },
 ];
 
 const { passed, total } = await runTests(tests);
