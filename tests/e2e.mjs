@@ -243,24 +243,30 @@ const tests = [
   {
     name: 'keyboard shortcuts: F / S / H / Esc all work',
     fn: async (page) => {
-      // Esc: no-op safe (settings panel was never open).
+      // The auto-hide UI timer fires after 3s of inactivity and sets
+      // uiVisible=false, which is the same state H toggles TO.
+      // To make this test deterministic, wait for the timer to
+      // fire first, then press H. Before that, the pill is at
+      // opacity-50 (visible) and H will hide it.
       await page.keyboard.press('Escape');
-      // S opens settings.
       await page.keyboard.press('s');
       await page.waitForSelector('[role="dialog"][aria-label="Settings"]');
-      // Esc closes settings.
       await page.keyboard.press('Escape');
-      // H toggles UI hint; the shortcut hint pill should disappear.
-      // We tag the pill wrapper with data-hint="shortcut-pill" so
-      // we can find it deterministically.
+      // Let the auto-hide timer fire so uiVisible becomes false.
+      await new Promise((r) => setTimeout(r, 3500));
+      // H toggles uiVisible — was false, should now be true.
       await page.keyboard.press('h');
-      const hiddenHint = await page.evaluate(() => {
+      await new Promise((r) => setTimeout(r, 300));
+      const visibleHint = await page.evaluate(() => {
         const pill = document.querySelector('[data-hint="shortcut-pill"]');
-        if (!pill) return true;
+        if (!pill) return false;
         const cs = getComputedStyle(pill);
-        return cs.opacity === '0' || pill.className.includes('opacity-0');
+        // Visible state has opacity-50 in the className, hidden has
+        // opacity-0. The className check is more robust than opacity
+        // because Tailwind's transition might still be in flight.
+        return pill.className.includes('opacity-50') && !pill.className.includes('opacity-0');
       });
-      assert(hiddenHint, 'H key should hide the keyboard hint pill');
+      assert(visibleHint, 'H key should re-show the keyboard hint pill (it was auto-hidden)');
       // Toggle back so subsequent tests see a normal state.
       await page.keyboard.press('h');
       // F toggles fullscreen via the Fullscreen API; in headless
