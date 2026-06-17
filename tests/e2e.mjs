@@ -614,6 +614,103 @@ const tests = [
       assertMatch(streak, /7d streak/, 'streak text');
     },
   },
+
+  // ── Wallpaper variants ──────────────────────────────────────────
+
+  {
+    name: 'wallpaper: switching to geometric renders 8 SVG rings',
+    fn: async (page) => {
+      // Open settings, click the geometric wallpaper button.
+      await page.keyboard.press('s');
+      await page.waitForSelector('[role="dialog"][aria-label="Settings"]', { timeout: 3000 });
+      await page.click('[data-wallpaper="geometric"]');
+      // The layer mounts asynchronously after React commits the
+      // state change. Wait for the data attribute.
+      await page.waitForSelector('[data-wallpaper="geometric"]', { timeout: 3000 });
+      const svgCount = await page.evaluate(() =>
+        document.querySelectorAll('[data-wallpaper="geometric"] svg').length,
+      );
+      assert(svgCount === 8, `expected 8 SVG rings, got ${svgCount}`);
+    },
+  },
+
+  {
+    name: 'wallpaper: switching to fireflies renders 25 firefly particles',
+    fn: async (page) => {
+      // Click via DOM API (not puppeteer .click) so the test isn't
+      // thrown off by the button being a child of the still-open
+      // settings dialog. The dialog may close on Escape between
+      // tests; if so, re-open.
+      const ready = await page.evaluate(() => {
+        if (!document.querySelector('[role="dialog"][aria-label="Settings"]')) {
+          // Re-open via the global S key handler — but we can't
+          // dispatch keys here. Just check; the previous test
+          // already opened it.
+          return false;
+        }
+        return true;
+      });
+      if (!ready) {
+        await page.keyboard.press('s');
+        await page.waitForSelector('[role="dialog"][aria-label="Settings"]');
+      }
+      await page.evaluate(() => {
+        const btn = document.querySelector('[data-wallpaper="fireflies"]');
+        btn?.click();
+      });
+      // Wait for the fireflies root + child data-firefly spans to mount.
+      await page.waitForSelector('[data-wallpaper="fireflies"] [data-firefly]', { timeout: 5000 });
+      const count = await page.evaluate(() =>
+        document.querySelectorAll('[data-wallpaper="fireflies"] [data-firefly]').length,
+      );
+      assert(count === 25, `expected 25 fireflies, got ${count}`);
+    },
+  },
+
+  {
+    name: 'wallpaper: switching to mesh renders 4 gradient blobs',
+    fn: async (page) => {
+      // The settings dialog can close on backdrop click. The wallpaper
+      // button might be a child of the dialog. We click via DOM API
+      // scoped to the right element. If the dialog has been closed by
+      // the previous test's click, re-open it.
+      const dialogOpen = await page.evaluate(() =>
+        !!document.querySelector('[role="dialog"][aria-label="Settings"]'),
+      );
+      if (!dialogOpen) {
+        await page.keyboard.press('s');
+        await page.waitForSelector('[role="dialog"][aria-label="Settings"]');
+      }
+      // The wallpaper button row has data-wallpaper="mesh" (multiple
+      // matches: the button + the rendered layer). Find the button
+      // (it has type="button").
+      await page.evaluate(() => {
+        const btn = document.querySelector('button[data-wallpaper="mesh"]');
+        btn?.click();
+      });
+      // The mesh root mounts after React commits. Wait for it AND
+      // for the layer to have 4 child divs.
+      await page.waitForFunction(
+        () => {
+          // Find a [data-wallpaper="mesh"] that's NOT a button.
+          const roots = Array.from(
+            document.querySelectorAll('[data-wallpaper="mesh"]'),
+          ).filter((el) => el.tagName.toLowerCase() !== 'button');
+          const r = roots[0];
+          return r && r.querySelectorAll('div').length >= 4;
+        },
+        { timeout: 5000 },
+      );
+      const blobCount = await page.evaluate(() => {
+        const roots = Array.from(
+          document.querySelectorAll('[data-wallpaper="mesh"]'),
+        ).filter((el) => el.tagName.toLowerCase() !== 'button');
+        const root = roots[0];
+        return root ? root.querySelectorAll('div').length : 0;
+      });
+      assert(blobCount === 4, `expected 4 mesh blobs, got ${blobCount}`);
+    },
+  },
 ];
 
 const { passed, total } = await runTests(tests);

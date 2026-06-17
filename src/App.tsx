@@ -69,7 +69,7 @@ type PersistedSettings = {
   autoLaunch: boolean;
   autoLaunchMs: number;
   /** Animated background wallpaper style. 'none' = no wallpaper. */
-  wallpaper: 'none' | 'aurora' | 'stars' | 'rain';
+  wallpaper: 'none' | 'aurora' | 'stars' | 'rain' | 'geometric' | 'mesh' | 'fireflies';
   /** Wallpaper intensity (0..1). */
   wallpaperIntensity: number;
 };
@@ -97,7 +97,7 @@ const DEFAULTS: PersistedSettings = {
   dateFormat: 'long' as 'long' | 'short' | 'iso',
   autoLaunch: false,
   autoLaunchMs: 5 * 60_000, // 5 minutes
-  wallpaper: 'aurora' as 'none' | 'aurora' | 'stars' | 'rain',
+  wallpaper: 'aurora' as 'none' | 'aurora' | 'stars' | 'rain' | 'geometric' | 'mesh' | 'fireflies',
   wallpaperIntensity: 0.4,
   ambient: 'none' as 'none' | 'rain' | 'forest' | 'white',
   ambientVolume: 0.3,
@@ -169,7 +169,7 @@ export default function App() {
   const [uiVisible, setUiVisible] = useState(true);
   const [autoLaunch, setAutoLaunch] = useState<boolean>(initial.autoLaunch);
   const [autoLaunchMs, setAutoLaunchMs] = useState<number>(initial.autoLaunchMs);
-  const [wallpaper, setWallpaper] = useState<'none' | 'aurora' | 'stars' | 'rain'>(initial.wallpaper);
+  const [wallpaper, setWallpaper] = useState<'none' | 'aurora' | 'stars' | 'rain' | 'geometric' | 'mesh' | 'fireflies'>(initial.wallpaper);
   const [wallpaperIntensity, setWallpaperIntensity] = useState<number>(initial.wallpaperIntensity);
   const [ambient, setAmbient] = useState<'none' | 'rain' | 'forest' | 'white'>(initial.ambient);
   const [ambientVolume, setAmbientVolume] = useState<number>(initial.ambientVolume);
@@ -613,12 +613,13 @@ export default function App() {
             Wallpaper
           </div>
           <div className="grid grid-cols-4 gap-1 mb-2">
-            {(['none', 'aurora', 'stars', 'rain'] as const).map((w) => (
+            {(['none', 'aurora', 'stars', 'rain', 'geometric', 'mesh', 'fireflies'] as const).map((w) => (
               <button
                 key={w}
                 type="button"
                 onClick={() => setWallpaper(w)}
                 aria-pressed={wallpaper === w}
+                data-wallpaper={w}
                 className={`px-1 py-2 rounded-lg text-[10px] capitalize transition-colors ${
                   wallpaper === w
                     ? isDark(theme)
@@ -633,7 +634,20 @@ export default function App() {
                     : 'hover:bg-black/10 text-black/80'
                 }`}
               >
-                {w === 'none' ? '∅' : w === 'aurora' ? '🌌' : w === 'stars' ? '✨' : '🌧'} {w}
+                {w === 'none'
+                  ? '∅'
+                  : w === 'aurora'
+                  ? '🌌'
+                  : w === 'stars'
+                  ? '✨'
+                  : w === 'rain'
+                  ? '🌧'
+                  : w === 'geometric'
+                  ? '◯'
+                  : w === 'mesh'
+                  ? '🌀'
+                  : '🪲'}{' '}
+                {w}
               </button>
             ))}
           </div>
