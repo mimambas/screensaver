@@ -10,7 +10,9 @@ export type ClockColor =
   | 'mint'
   | 'lavender'
   | 'peach'
-  | 'gold';
+  | 'gold'
+  /** User-supplied HEX string. Validated at parse time, not at type level. */
+  | 'custom';
 /** Continuous scale multiplier, 0.5 .. 3.0, step 0.1 */
 export type ClockSize = number;
 // Re-export the theme types from theme-presets so legacy imports of
@@ -45,8 +47,20 @@ export const CLOCK_COLORS: { id: ClockColor; label: string; hex: string }[] = [
   { id: 'gold', label: 'Gold', hex: '#fde047' },
 ];
 
-export function getColor(color: ClockColor): string {
+export function getColor(color: ClockColor, customHex?: string): string {
+  if (color === 'custom' && customHex) return customHex;
   return CLOCK_COLORS.find((x) => x.id === color)?.hex ?? '#ffffff';
+}
+
+/** Validate a user-supplied HEX string. Accepts #RGB, #RRGGBB, RGB, RRGGBB. */
+export function normalizeHex(input: string): string | null {
+  if (typeof input !== 'string') return null;
+  const s = input.trim().replace(/^#/, '');
+  if (!/^[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(s)) return null;
+  if (s.length === 3) {
+    return '#' + s.split('').map((c) => c + c).join('').toLowerCase();
+  }
+  return '#' + s.toLowerCase();
 }
 
 export function getSizeScale(size: ClockSize | undefined): number {

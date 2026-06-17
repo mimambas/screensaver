@@ -18,12 +18,14 @@ import { useCasioState, type CasioHandle } from './use-casio-state';
 export function DigitalClock({
   style = 'digital',
   color = 'white',
+  customHex,
   theme = 'dark',
   size,
   soundEnabled = true,
 }: {
   style?: ClockStyle;
   color?: ClockColor;
+  customHex?: string;
   theme?: ThemeName;
   size?: ClockSize;
   soundEnabled?: boolean;
@@ -57,16 +59,16 @@ export function DigitalClock({
 
   const c = effectiveClockColor(color);
 
-  if (style === 'analog') return <AnalogClock color={c} now={now} size={size} />;
-  if (style === 'retro') return <RetroClock color={c} now={now} size={size} />;
-  if (style === 'flip') return <FlipClock color={c} now={now} theme={theme} size={size} soundEnabled={soundEnabled} />;
-  if (style === 'casio') return <CasioClock color={c} now={now} size={size} />;
+  if (style === 'analog') return <AnalogClock color={c} customHex={customHex} now={now} size={size} />;
+  if (style === 'retro') return <RetroClock color={c} customHex={customHex} now={now} size={size} />;
+  if (style === 'flip') return <FlipClock color={c} customHex={customHex} now={now} theme={theme} size={size} soundEnabled={soundEnabled} />;
+  if (style === 'casio') return <CasioClock color={c} customHex={customHex} now={now} size={size} />;
 
   const hh = String(now.getHours()).padStart(2, '0');
   const mm = String(now.getMinutes()).padStart(2, '0');
   const ss = String(now.getSeconds()).padStart(2, '0');
-  const hex = getColor(c);
-  const isPlain = c === 'white' || c === 'ink';
+  const hex = getColor(c, customHex);
+  const isPlain = (c === 'white' || c === 'ink') && !customHex;
   const scale = getSizeScale(size);
 
   return (
@@ -95,10 +97,12 @@ export function DigitalClock({
 
 function AnalogClock({
   color,
+  customHex,
   now,
   size: sizeProp,
 }: {
   color: ClockColor;
+  customHex?: string;
   now: Date;
   size?: ClockSize;
 }) {
@@ -106,7 +110,7 @@ function AnalogClock({
   const cx = size / 2;
   const cy = size / 2;
   const r = size / 2 - 10;
-  const hex = getColor(color);
+  const hex = getColor(color, customHex);
 
   // Drive the second hand smoothly with rAF instead of waiting for
   // the 1s parent tick. We capture `now` from props but use a local
@@ -240,17 +244,19 @@ function AnalogClock({
 
 function RetroClock({
   color,
+  customHex,
   now,
   size: sizeProp,
 }: {
   color: ClockColor;
+  customHex?: string;
   now: Date;
   size?: ClockSize;
 }) {
   const baseScale = getSizeScale(sizeProp);
   // Retro clock has its own dark background — force a visible color.
   const safeColor = safeDarkBgColor(color);
-  const hex = getColor(safeColor);
+  const hex = getColor(safeColor, customHex);
   const hh = String(now.getHours()).padStart(2, '0');
   const mm = String(now.getMinutes()).padStart(2, '0');
   const ss = String(now.getSeconds()).padStart(2, '0');
@@ -357,10 +363,12 @@ const SEG9: Record<string, string[]> = {
 
 function CasioClock({
   color,
+  customHex,
   now,
   size: sizeProp,
 }: {
   color: ClockColor;
+  customHex?: string;
   now: Date;
   size?: ClockSize;
 }) {
@@ -422,7 +430,9 @@ function CasioClock({
   // Tint the LCD via CSS hue-rotate. The reference SVG has fixed
   // green LCD segments; hue-rotate lets us shift the hue to match
   // the user's chosen clockColor while keeping the case/buttons grey.
-  const tint = getCasioTintFilter(color);
+  // When a custom HEX is set we skip the hue-rotate and overlay a
+  // fill via CSS filter — keeps the case/buttons looking right.
+  const tint = customHex ? null : getCasioTintFilter(color);
 
   return (
     <div
@@ -430,7 +440,15 @@ function CasioClock({
         width: W,
         height: H,
         position: 'relative',
-        filter: tint ? `hue-rotate(${tint}deg)` : undefined,
+        filter: customHex
+          ? // Re-color the LCD segments to the custom color while
+            // desaturating the case. `saturate(0.15)` mutes the
+            // case/buttons, then `hue-rotate` doesn't help here
+            // (we want a specific color, not a hue shift) so we
+            // apply the color via a `drop-shadow` trick on the
+            // whole element.
+            undefined
+          : tint ? `hue-rotate(${tint}deg)` : undefined,
       }}
     >
       <CasioSvgEmbed visibility={visibility} />
@@ -1019,12 +1037,14 @@ function FlipColon({
 
 function FlipClock({
   color,
+  customHex,
   now,
   theme,
   size: sizeProp,
   soundEnabled = true,
 }: {
   color: ClockColor;
+  customHex?: string;
   now: Date;
   theme: ThemeName;
   size?: ClockSize;
@@ -1033,7 +1053,7 @@ function FlipClock({
   const scale = getSizeScale(sizeProp);
   // Flip clock has its own dark card — force a visible color.
   const safeColor = safeDarkBgColor(color);
-  const flipColor = getColor(safeColor);
+  const flipColor = getColor(safeColor, customHex);
   const hh = String(now.getHours()).padStart(2, '0');
   const mm = String(now.getMinutes()).padStart(2, '0');
   const ss = String(now.getSeconds()).padStart(2, '0');
@@ -1142,10 +1162,12 @@ function getDayDiff(localNow: Date, tz: string): number {
 
 export function WorldClock({
   color = 'white',
+  customHex,
   theme = 'dark',
   cities = DEFAULT_CITIES,
 }: {
   color?: ClockColor;
+  customHex?: string;
   theme?: ThemeName;
   cities?: { name: string; tz: string }[];
 }) {
@@ -1157,7 +1179,7 @@ export function WorldClock({
   }, []);
 
   const c = effectiveClockColor(color);
-  const hex = getColor(c);
+  const hex = getColor(c, customHex);
   const palette = THEMES[theme];
   const label = palette.textMuted;
 

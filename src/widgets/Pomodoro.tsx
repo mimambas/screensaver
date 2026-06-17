@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Play, Pause, RotateCcw, Coffee, Brain } from 'lucide-react';
-import { playChime } from './audio';
+import { playChimePreset, type ChimeId } from './audio';
 import type { ThemeName } from './clock-constants';
 import { THEMES } from './theme-presets';
 import { useT } from '../i18n';
@@ -25,6 +25,8 @@ type PersistedState = {
   shortMin: number;
   longMin: number;
   cyclesCompleted: number;
+  /** Phase-end sound. Defaults to 'bell' (back-compat with v1). */
+  chime: ChimeId;
 };
 
 // Daily stats: { 'YYYY-MM-DD': focusMinutes }. We keep ~30 days of
@@ -117,6 +119,7 @@ function loadState(): PersistedState {
     shortMin: 5,
     longMin: 15,
     cyclesCompleted: 0,
+    chime: 'bell',
   };
   if (typeof window === 'undefined') return fallback;
   try {
@@ -142,6 +145,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
   const [shortMin, setShortMin] = useState(persisted.shortMin);
   const [longMin, setLongMin] = useState(persisted.longMin);
   const [cyclesCompleted, setCyclesCompleted] = useState(persisted.cyclesCompleted);
+  const [chime, setChime] = useState<ChimeId>(persisted.chime);
   const [seconds, setSeconds] = useState(() => {
     // Resume from 0 on load — most predictable
     return DURATIONS[persisted.mode];
@@ -162,12 +166,12 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
     try {
       window.localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ mode, workMin, shortMin, longMin, cyclesCompleted }),
+        JSON.stringify({ mode, workMin, shortMin, longMin, cyclesCompleted, chime }),
       );
     } catch {
       // localStorage may be unavailable
     }
-  }, [mode, workMin, shortMin, longMin, cyclesCompleted]);
+  }, [mode, workMin, shortMin, longMin, cyclesCompleted, chime]);
 
   useEffect(() => {
     saveStats(stats);
@@ -181,11 +185,13 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
   const workMinRef = useRef(workMin);
   const shortMinRef = useRef(shortMin);
   const longMinRef = useRef(longMin);
+  const chimeRef = useRef(chime);
   useEffect(() => {
     workMinRef.current = workMin;
     shortMinRef.current = shortMin;
     longMinRef.current = longMin;
-  }, [workMin, shortMin, longMin]);
+    chimeRef.current = chime;
+  }, [workMin, shortMin, longMin, chime]);
 
   useEffect(() => {
     if (!running) return;
@@ -193,7 +199,7 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
       setSeconds((s) => {
         if (s > 1) return s - 1;
         // Reached zero — auto-advance
-        playChime();
+        playChimePreset(chimeRef.current);
         setFlash(true);
         window.setTimeout(() => setFlash(false), 800);
         setMode((prev) => {
@@ -587,6 +593,34 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
         />
         {t('pomodoro.autoStart')}
       </label>
+      {/* Sound picker — small row of icon-buttons. The current
+          choice is highlighted; clicking plays a preview so the user
+          knows what they're getting. */}
+      <div className={`flex items-center gap-1 text-[10px] ${labelClass}`}>
+        <span>{t('pomodoro.sound')}:</span>
+        <div className="inline-flex rounded-full overflow-hidden border border-current/20">
+          {(['bell', 'ding', 'gong', 'wood', 'digital', 'mute'] as ChimeId[]).map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => {
+                setChime(c);
+                if (c !== 'mute') playChimePreset(c);
+              }}
+              aria-pressed={chime === c}
+              data-chime={c}
+              title={t(`pomodoro.chime.${c}` as 'pomodoro.chime.bell')}
+              className={`px-1.5 py-0.5 transition-colors ${
+                chime === c
+                  ? theme === 'claude' ? 'bg-[#3a2e1f]/15 text-[#3a2e1f]' : `${palette.surface} ${palette.text}`
+                  : `${palette.surfaceHover}`
+              }`}
+            >
+              {c === 'bell' ? '🔔' : c === 'ding' ? '🔊' : c === 'gong' ? '🥁' : c === 'wood' ? '🪵' : c === 'digital' ? '📟' : '🔇'}
+            </button>
+          ))}
+        </div>
+      </div>
       <button
         type="button"
         onClick={() => setShowStats((v) => !v)}

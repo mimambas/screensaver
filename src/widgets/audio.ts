@@ -105,27 +105,154 @@ function getNoiseBuffer(ctx: AudioContext, durationSec: number): AudioBuffer {
   return buf;
 }
 
-export function playChime(): void {
+// --------------------------------------------------------------------------
+// Chime presets — distinct timbres for Pomodoro phase ends + alarm fire.
+// All are pure WebAudio (no asset files) so the bundle stays small and
+// they work offline. Each preset returns a function that schedules the
+// sound on the shared audio context; we bail silently if audio is
+// suspended or unavailable.
+//
+//   bell     — two-tone western doorbell (the original chime)
+//   ding     — single soft high note, gentle phase end
+//   gong     — low mallet strike with long decay
+//   wood     — short wooden block (knock)
+//   digital  — short 8-bit-style square wave beep
+// --------------------------------------------------------------------------
+
+export type ChimeId = 'bell' | 'ding' | 'gong' | 'wood' | 'digital' | 'mute';
+
+function ensureCtx(): AudioContext | null {
+  // Try the unlocked context first; fall back to a one-shot ctx
+  // (browsers allow audio inside a user-gesture handler, so callers
+  // from the React event path can pass through). If neither works,
+  // we silently bail.
+  if (_audioCtx) return _audioCtx;
   try {
     const Ctor = window.AudioContext ||
       (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!Ctor) return;
-    const ctx = new Ctor();
-    const t = ctx.currentTime;
-    // Two-tone bell: ding-dong
-    [880, 660].forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.frequency.value = freq;
-      osc.type = 'sine';
-      gain.gain.setValueAtTime(0, t + i * 0.4);
-      gain.gain.linearRampToValueAtTime(0.25, t + i * 0.4 + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.4 + 0.35);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(t + i * 0.4);
-      osc.stop(t + i * 0.4 + 0.4);
-    });
+    if (!Ctor) return null;
+    _audioCtx = new Ctor();
+    if (_audioCtx.state === 'suspended') void _audioCtx.resume();
+    return _audioCtx;
   } catch {
-    // ignore — audio not available
+    return null;
   }
+}
+
+function gainEnv(
+  ctx: AudioContext,
+  t: number,
+  attack: number,
+  release: number,
+  peak: number,
+): GainNode {
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(peak, t + attack);
+  g.gain.exponentialRampToValueAtTime(0.001, t + attack + release);
+  return g;
+}
+
+// Bell — two-tone descending (original chime).
+function playBell(): void {
+  const ctx = ensureCtx();
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  [880, 660].forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const g = gainEnv(ctx, t + i * 0.4, 0.01, 0.35, 0.25);
+    osc.frequency.value = freq;
+    osc.type = 'sine';
+    osc.connect(g).connect(ctx.destination);
+    osc.start(t + i * 0.4);
+    osc.stop(t + i * 0.4 + 0.4);
+  });
+}
+
+// Ding — single high note, short and bright.
+function playDing(): void {
+  const ctx = ensureCtx();
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const g = gainEnv(ctx, t, 0.005, 0.5, 0.2);
+  osc.frequency.setValueAtTime(1320, t);
+  osc.frequency.exponentialRampToValueAtTime(880, t + 0.4);
+  osc.type = 'sine';
+  osc.connect(g).connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + 0.55);
+}
+
+// Gong — low strike with long exponential decay.
+function playGong(): void {
+  const ctx = ensureCtx();
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  // Fundamental + 5th (a classic gong has rich partials).
+  [180, 270].forEach((freq) => {
+    const osc = ctx.createOscillator();
+    const g = gainEnv(ctx, t, 0.02, 1.6, 0.18);
+    osc.frequency.setValueAtTime(freq, t);
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.85, t + 1.5);
+    osc.type = 'sine';
+    osc.connect(g).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 1.7);
+  });
+}
+
+// Wood — short wooden block (knock).
+function playWood(): void {
+  const ctx = ensureCtx();
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const g = gainEnv(ctx, t, 0.002, 0.06, 0.3);
+  osc.frequency.setValueAtTime(900, t);
+  osc.frequency.exponentialRampToValueAtTime(380, t + 0.04);
+  osc.type = 'triangle';
+  osc.connect(g).connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + 0.08);
+}
+
+// Digital — 8-bit-style square beep.
+function playDigital(): void {
+  const ctx = ensureCtx();
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  // Two short beeps, classic alarm feel.
+  [1000, 800].forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const g = gainEnv(ctx, t + i * 0.18, 0.002, 0.12, 0.18);
+    osc.frequency.value = freq;
+    osc.type = 'square';
+    osc.connect(g).connect(ctx.destination);
+    osc.start(t + i * 0.18);
+    osc.stop(t + i * 0.18 + 0.15);
+  });
+}
+
+const CHIMES: Record<ChimeId, () => void> = {
+  bell: playBell,
+  ding: playDing,
+  gong: playGong,
+  wood: playWood,
+  digital: playDigital,
+  mute: () => {},
+};
+
+/**
+ * Play the named chime. `chime === 'mute'` is a no-op. Falls back
+ * to `bell` if the id is unknown.
+ */
+export function playChimePreset(chime: ChimeId): void {
+  const fn = CHIMES[chime] ?? playBell;
+  fn();
+}
+
+/** Back-compat: the original bell chime (preserves existing call sites). */
+export function playChime(): void {
+  playBell();
 }

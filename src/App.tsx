@@ -11,6 +11,7 @@ import {
   CLOCK_SIZES,
   CLOCK_SIZE_PRESETS,
   clampClockSize,
+  normalizeHex,
   type ClockStyle,
   type ClockColor,
   type ClockSize,
@@ -34,6 +35,7 @@ import { Calendar } from './widgets/Calendar';
 import { Draggable } from './widgets/Draggable';
 import { useAmbient } from './widgets/Ambient';
 import { Breathing } from './widgets/Breathing';
+import { Affirmation } from './widgets/Affirmation';
 
 type Layout = 'classic' | 'split' | 'minimal';
 
@@ -64,7 +66,10 @@ type PersistedSettings = {
   showAlarms: boolean;
   showTimer: boolean;
   showBreathing: boolean;
+  showAffirmation: boolean;
   flipSound: boolean;
+  /** HEX string when clockColor === 'custom'. */
+  customColor: string;
   city: string;
   /** Ambient background sound: 'none' | 'rain' | 'forest' | 'white'. */
   ambient: 'none' | 'rain' | 'forest' | 'white';
@@ -98,7 +103,9 @@ const DEFAULTS: PersistedSettings = {
   showAlarms: true,
   showTimer: true,
   showBreathing: false,
+  showAffirmation: false,
   flipSound: true,
+  customColor: '#a78bfa',
   city: 'Jakarta',
   autoTheme: false,
   dateLocale: 'en-US',
@@ -141,6 +148,7 @@ export default function App() {
   const [showTimer, setShowTimer] = useState(initial.showTimer);
   const [showAlarms, setShowAlarms] = useState(initial.showAlarms);
   const [showBreathing, setShowBreathing] = useState(initial.showBreathing);
+  const [showAffirmation, setShowAffirmation] = useState(initial.showAffirmation);
   const [autoTheme, setAutoTheme] = useState<boolean>(initial.autoTheme);
   const [theme, setTheme] = useState<ThemeName>(initial.theme);
   // When autoTheme is on, override the user-picked theme based on
@@ -160,6 +168,7 @@ export default function App() {
   }, [autoTheme]);
   const [clockStyle, setClockStyle] = useState<ClockStyle>(initial.clockStyle);
   const [clockColor, setClockColor] = useState<ClockColor>(initial.clockColor);
+  const [customColor, setCustomColor] = useState<string>(initial.customColor);
   const [clockSize, setClockSizeRaw] = useState<ClockSize>(clampClockSize(initial.clockSize));
   // Clamp on every setter so persisted/manual values can't escape the range.
   const setClockSize = useCallback((v: ClockSize) => {
@@ -199,8 +208,9 @@ export default function App() {
     try {
       const snap: PersistedSettings = {
         layout, theme, clockStyle, clockColor, clockSize,
+        customColor,
         showDate, showCalendar, showWorldClock, showQuote, showWeather,
-        showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer, showBreathing,
+        showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer, showBreathing, showAffirmation,
         flipSound, city, autoTheme, dateLocale, dateFormat,
         autoLaunch, autoLaunchMs, wallpaper, wallpaperIntensity,
         ambient, ambientVolume,
@@ -210,9 +220,9 @@ export default function App() {
       // localStorage may be unavailable (private mode, quota); silent fail
     }
   }, [
-    layout, theme, clockStyle, clockColor, clockSize,
+    layout, theme, clockStyle, clockColor, clockSize, customColor,
     showDate, showCalendar, showWorldClock, showQuote, showWeather,
-    showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer, showBreathing,
+    showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer, showBreathing, showAffirmation,
     flipSound, city, autoTheme, dateLocale, dateFormat,
     autoLaunch, autoLaunchMs, wallpaper, wallpaperIntensity,
     ambient, ambientVolume,
@@ -330,7 +340,8 @@ export default function App() {
     !showPomodoro &&
     !showDayProgress &&
     !showAlarms &&
-    !showBreathing;
+    !showBreathing &&
+    !showAffirmation;
 
   const turnOffAll = () => {
     setShowDate(false);
@@ -343,6 +354,7 @@ export default function App() {
     setShowAlarms(false);
     setShowTimer(false);
     setShowBreathing(false);
+    setShowAffirmation(false);
   };
 
   const resetSettings = () => {
@@ -364,7 +376,9 @@ export default function App() {
     setShowAlarms(DEFAULTS.showAlarms);
     setShowTimer(DEFAULTS.showTimer);
     setShowBreathing(DEFAULTS.showBreathing);
+    setShowAffirmation(DEFAULTS.showAffirmation);
     setFlipSound(DEFAULTS.flipSound);
+    setCustomColor(DEFAULTS.customColor);
     setCity(DEFAULTS.city);
     setAutoTheme(DEFAULTS.autoTheme);
     setAutoLaunch(DEFAULTS.autoLaunch);
@@ -886,7 +900,7 @@ export default function App() {
               {CLOCK_COLORS.find((c) => c.id === clockColor)?.label ?? clockColor}
             </div>
           </div>
-          <div className="grid grid-cols-6 gap-1.5 mb-4">
+          <div className="grid grid-cols-6 gap-1.5 mb-2">
             {CLOCK_COLORS.map((c) => {
               // Contrast hint: if user picks white on light theme, or ink on
               // dark theme, the digits will be invisible. Don't block the
@@ -928,6 +942,57 @@ export default function App() {
                 />
               );
             })}
+          </div>
+          {/* Custom HEX color picker — the 12th swatch. The native
+              `<input type="color">` opens the OS color dialog. We
+              validate the resulting value before storing it. */}
+          <div className="flex items-center gap-2 mb-4">
+            <button
+              type="button"
+              onClick={() => setClockColor('custom')}
+              aria-pressed={clockColor === 'custom'}
+              data-color="custom"
+              title={t('settings.clockColor.custom')}
+              className={`aspect-square w-9 rounded-lg transition-transform border ${
+                clockColor === 'custom'
+                  ? isDark(theme)
+                    ? 'ring-2 ring-white/80 scale-105'
+                    : isClaude(theme)
+                    ? 'ring-2 ring-[#3a2e1f]/70 scale-105'
+                    : 'ring-2 ring-black/70 scale-105'
+                  : 'hover:scale-110'
+              }`}
+              style={{ backgroundColor: customColor }}
+            />
+            <input
+              type="color"
+              value={customColor}
+              onChange={(e) => setCustomColor(e.target.value)}
+              aria-label={t('settings.clockColor.customHex')}
+              data-custom-color-input
+              className={`w-8 h-8 bg-transparent border rounded cursor-pointer ${isDark(theme) ? 'border-white/20' : 'border-black/20'}`}
+            />
+            <input
+              type="text"
+              value={customColor}
+              onChange={(e) => {
+                const v = e.target.value;
+                const norm = normalizeHex(v);
+                if (norm) setCustomColor(norm);
+                // While typing we don't switch the active color — that
+                // happens when the user clicks the swatch above.
+              }}
+              aria-label={t('settings.clockColor.customHexText')}
+              data-custom-color-text
+              placeholder="#a78bfa"
+              className={`flex-1 px-2 py-1 rounded text-[11px] font-mono outline-none ${
+                isDark(theme)
+                  ? 'bg-white/10 text-white placeholder-white/30 focus:bg-white/15'
+                  : isClaude(theme)
+                  ? 'bg-[#f0e6d2] text-[#3a2e1f] placeholder-[#3a2e1f]/40 focus:bg-[#e8dcc4]'
+                  : 'bg-black/5 text-black placeholder-black/40 focus:bg-black/10'
+              }`}
+            />
           </div>
 
           <div className="text-xs uppercase tracking-widest opacity-70 mb-3">
@@ -989,6 +1054,7 @@ export default function App() {
               { label: 'Stopwatch', val: showStopwatch, set: () => setShowStopwatch((v) => !v) },
               { label: 'Timer', val: showTimer, set: () => setShowTimer((v) => !v) },
               { label: 'Breathing', val: showBreathing, set: () => setShowBreathing((v) => !v) },
+              { label: 'Affirmation', val: showAffirmation, set: () => setShowAffirmation((v) => !v) },
               { label: 'Weather', val: showWeather, set: () => setShowWeather((v) => !v) },
               { label: 'Day Progress', val: showDayProgress, set: () => setShowDayProgress((v) => !v) },
               { label: 'Alarms', val: showAlarms, set: () => setShowAlarms((v) => !v) },
@@ -1191,7 +1257,7 @@ export default function App() {
       {/* Layouts */}
       {layout === 'classic' && (
         <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-8 gap-8">
-          <DigitalClock style={clockStyle} color={clockColor} size={clockSize} soundEnabled={flipSound} theme={theme} />
+          <DigitalClock style={clockStyle} color={clockColor} customHex={customColor} size={clockSize} soundEnabled={flipSound} theme={theme} />
           {showDate && (
             <Draggable id="date" theme={theme}>
               <DateDisplay theme={theme} locale={dateLocale} format={dateFormat} />
@@ -1224,6 +1290,7 @@ export default function App() {
             <div className="flex flex-col items-center gap-4 mt-2 w-full max-w-md">
               {showWeather && <Weather theme={theme} city={city} />}
               {showQuote && <Quotes theme={theme} />}
+              {showAffirmation && <Affirmation theme={theme} />}
               {showAlarms && <AlarmList theme={theme} />}
             </div>
           )}
@@ -1234,10 +1301,10 @@ export default function App() {
         <div className="relative z-10 min-h-screen grid grid-cols-1 md:grid-cols-3 gap-6 p-12">
           {/* Left: time */}
           <div className="flex flex-col items-center justify-center gap-6 border-r border-white/10 pr-6">
-            <DigitalClock style={clockStyle} color={clockColor} size={clockSize} soundEnabled={flipSound} theme={theme} />
+            <DigitalClock style={clockStyle} color={clockColor} customHex={customColor} size={clockSize} soundEnabled={flipSound} theme={theme} />
             {showDate && <DateDisplay theme={theme} locale={dateLocale} format={dateFormat} />}
           {showCalendar && <div className="mt-2"><Calendar theme={theme} locale={dateLocale} /></div>}
-            {showWorldClock && <WorldClock color={clockColor} theme={theme} cities={worldCities} />}
+            {showWorldClock && <WorldClock color={clockColor} customHex={customColor} theme={theme} cities={worldCities} />}
             {showDayProgress && <DayProgress theme={theme} city={city} />}
           </div>
 
@@ -1259,7 +1326,7 @@ export default function App() {
 
       {layout === 'minimal' && (
         <div className="relative z-10 min-h-screen flex items-center justify-center p-8">
-          <DigitalClock style={clockStyle} color={clockColor} size={clockSize} soundEnabled={flipSound} theme={theme} />
+          <DigitalClock style={clockStyle} color={clockColor} customHex={customColor} size={clockSize} soundEnabled={flipSound} theme={theme} />
         </div>
       )}
     </div>
