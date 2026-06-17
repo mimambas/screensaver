@@ -164,9 +164,9 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
       });
     }, 1000);
     return () => window.clearInterval(id);
-    // We intentionally exclude `seconds`, `mode`, `cyclesCompleted` to keep the
-    // interval stable — state reads are taken from the latest closure via setState.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // We intentionally exclude `seconds`, `mode` from deps to keep
+    // the interval stable — those reads come from the latest closure
+    // via setState. Re-firing every second would reset the timer.
   }, [running, cyclesCompleted, autoStart, workMin]);
 
   const reset = () => {

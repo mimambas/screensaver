@@ -20,7 +20,10 @@ export function Calendar({
   });
 
   // Re-anchor 'today' at midnight so the highlight stays correct
-  // even if the page is left open across a day boundary.
+  // even if the page is left open across a day boundary. We track
+  // the day-of-month in a primitive so the deps array stays
+  // statically analyzable.
+  const today = now.getDate();
   useEffect(() => {
     const ms = (24 * 60 - new Date().getMinutes()) * 60_000 - new Date().getSeconds() * 1000;
     const id = window.setTimeout(() => {
@@ -29,7 +32,7 @@ export function Calendar({
       setView({ year: d.getFullYear(), month: d.getMonth() });
     }, ms);
     return () => window.clearTimeout(id);
-  }, [now.getDate()]);
+  }, [today]);
 
   // Locale-aware weekday labels (Sun..Sat or Mon..Sun).
   const weekdays = Array.from({ length: 7 }, (_, i) => {

@@ -29,7 +29,6 @@ export function DigitalClock({
 }) {
   // Tick at 1s when the tab is visible; back off to 1/minute when
   // hidden. Battery saver kicks in when the user walks away.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const [tick, setTick] = useState(0);
   useEffect(() => {
     let id: number;
@@ -50,8 +49,8 @@ export function DigitalClock({
     };
   }, []);
   // Recreate `now` on every tick. The interval above guarantees
-  // `tick` changes on a 1s (visible) or 60s (hidden) cadence, which
-  // (via deps) re-derives `now`.
+  // `tick` changes on a 1s (visible) or 60s (hidden) cadence. We use
+  // a setState callback form so the memo doesn't need setTick in deps.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const now = useMemo(() => new Date(), [tick]);
 
@@ -117,11 +116,13 @@ function AnalogClock({
   const baseNowRef = useRef<number>(0);
   const rafRef = useRef<number | null>(null);
   // Initialize the refs once on mount; performance.now() is impure
-  // so we have to defer it out of render.
+  // so we have to defer it out of render. Intentionally run-once —
+  // the rAF loop below re-anchors on every `now` tick.
   useEffect(() => {
     baseNowRef.current = now.getTime() - now.getMilliseconds();
     startRef.current = performance.now();
-  }, []); // run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     // When `now` changes (the parent tick fires), re-anchor the
     // baseline so the rAF loop stays in sync with the new second.
@@ -373,14 +374,15 @@ function CasioClock({
   const casio = useCasioState();
 
   // Compute the per-display characters, exactly like the reference's
-  // OS does. Different menus use different digit fields. We list
-  // `casio.stopwatchMs` explicitly because the stopwatch increments
-  // out-of-band (via setInterval inside the hook); without it the
-  // memo wouldn't re-fire when the stopwatch ticks.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // OS does. Different menus use different digit fields. The
+  // stopwatch increments out-of-band (via setInterval inside the
+  // hook) so we read stopwatchMs into a primitive for the dep array;
+  // ESLint otherwise flags it as a property access.
+  const { stopwatchMs: _stopwatchMs } = casio;
   const visibility = useMemo(() => {
     return computeCasioVisibility(casio, now);
-  }, [casio, now, casio.stopwatchMs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [casio, now, _stopwatchMs]);
 
   // Keyboard bindings: Q/W/E/F → L/A (both W and E for left-hand
   // friendliness) / C. Top-row QWEF mirrors the physical watch's
@@ -836,8 +838,7 @@ function FlipDigit({
         setFlipped(true);
       });
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ch, soundEnabled]);
+  }, [ch, current]);
 
   // sLeeNguyen uses onTransitionEnd to commit the new current digit
   // and reset flipped. We do the same so the timing is exact (the

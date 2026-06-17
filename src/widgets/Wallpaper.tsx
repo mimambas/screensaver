@@ -30,7 +30,8 @@ function Aurora({ intensity, isDark: dark }: { intensity: number; isDark: boolea
   const alpha = (n: number) => Math.min(1, intensity * n);
 
   // Random fixed positions so the blobs don't sit in identical spots
-  // each mount. Seeded by index for stability.
+  // each mount. Seeded by index for stability — re-firing on
+  // intensity change would jumble the field.
   const blobs = useMemo(
     () => [
       { left: '20%', top: '15%', size: 480, color: a, delay: '0s' },
@@ -103,7 +104,8 @@ function Stars({ intensity }: { intensity: number }) {
       });
     }
     return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // rand() and Math.random() are intentionally out of deps; we only
+    // want this layout to compute once per style change.
   }, []);
 
   return (
@@ -156,7 +158,8 @@ function Rain({ intensity }: { intensity: number }) {
       });
     }
     return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // rand() and Math.random() are intentionally out of deps; we only
+    // want this layout to compute once per style change.
   }, []);
 
   return (

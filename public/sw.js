@@ -10,7 +10,6 @@
 // __BUILD_HASH__ is replaced by Vite at build time (see vite.config.ts).
 // On schema-breaking changes bump the version prefix.
 
-/* eslint-disable no-undef */
 const CACHE = 'screensaver-v1-' + (typeof __BUILD_HASH__ !== 'undefined' ? __BUILD_HASH__ : 'dev');
 const APP_SHELL = [
   '/',
