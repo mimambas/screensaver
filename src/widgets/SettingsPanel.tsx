@@ -200,15 +200,27 @@ export function SettingsPanel() {
 
       {/* Ambient */}
       <Section title={t('settings.section.ambient')}>
-        <div className="grid grid-cols-4 gap-1 mb-2">
-          {(['none', 'rain', 'forest', 'white'] as const).map((a) => (
+        <div className="grid grid-cols-5 gap-1 mb-2">
+          {([
+            { id: 'none', icon: '🔇' },
+            { id: 'rain', icon: '🌧' },
+            { id: 'forest', icon: '🌲' },
+            { id: 'fireplace', icon: '🔥' },
+            { id: 'ocean', icon: '🌊' },
+            { id: 'stream', icon: '💧' },
+            { id: 'wind', icon: '🌬' },
+            { id: 'night', icon: '🌙' },
+            { id: 'cafe', icon: '☕' },
+            { id: 'white', icon: '🌫' },
+          ] as const).map((a) => (
             <button
-              key={a}
+              key={a.id}
               type="button"
-              onClick={() => s.setAmbient(a)}
-              aria-pressed={s.ambient === a}
-              className={`px-1 py-2 rounded-lg text-[10px] capitalize transition-colors ${
-                s.ambient === a
+              onClick={() => s.setAmbient(a.id)}
+              aria-pressed={s.ambient === a.id}
+              title={t(`settings.ambient.${a.id}`)}
+              className={`px-1 py-2 rounded-lg text-[10px] transition-colors ${
+                s.ambient === a.id
                   ? isDark(s.theme)
                     ? 'bg-white/15 text-white'
                     : isClaude(s.theme)
@@ -221,7 +233,8 @@ export function SettingsPanel() {
                   : 'hover:bg-black/10 text-black/80'
               }`}
             >
-              {a === 'none' ? '🔇' : a === 'rain' ? '🌧' : a === 'forest' ? '🌲' : '🌫'} {a}
+              <span className="block text-base leading-none mb-0.5">{a.icon}</span>
+              {t(`settings.ambient.${a.id}`)}
             </button>
           ))}
         </div>

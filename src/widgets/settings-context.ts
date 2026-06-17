@@ -17,7 +17,19 @@ import type { WorldCity } from './use-world-cities';
 export type Layout = 'classic' | 'split' | 'minimal';
 export type WallpaperId =
   | 'none' | 'aurora' | 'stars' | 'rain' | 'geometric' | 'mesh' | 'fireflies';
-export type AmbientId = 'none' | 'rain' | 'forest' | 'white';
+// Ambient soundscape id. Mirrors the engine's AmbientStyle but
+// adds 'none' (the off-state the UI uses to mute the engine).
+export type AmbientId =
+  | 'none'
+  | 'rain'
+  | 'forest'
+  | 'white'
+  | 'fireplace'
+  | 'ocean'
+  | 'stream'
+  | 'wind'
+  | 'night'
+  | 'cafe';
 
 export interface SettingsState {
   // Look & feel
