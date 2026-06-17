@@ -139,8 +139,13 @@ function getEngine(): AmbientEngine {
 export function useAmbient(style: AmbientStyle | 'none', volume: number) {
   const styleRef = useRef(style);
   const volRef = useRef(volume);
-  styleRef.current = style;
-  volRef.current = volume;
+  // Sync refs in an effect rather than during render — assigning to
+  // refs directly during render is a React anti-pattern and trips
+  // the eslint-plugin-react-hooks rule.
+  useEffect(() => {
+    styleRef.current = style;
+    volRef.current = volume;
+  }, [style, volume]);
 
   useEffect(() => {
     if (style === 'none') {
