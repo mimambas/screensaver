@@ -1,73 +1,55 @@
-# React + TypeScript + Vite
+# Screensaver
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A minimal fullscreen clock + widgets screensaver. React + TypeScript + Vite.
 
-Currently, two official plugins are available:
+**Live:** [screensaver-kappa.vercel.app](https://screensaver-kappa.vercel.app)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Features
 
-## React Compiler
+- 5 clock styles: digital, analog, retro (7-segment), flip, casio (F-91W port)
+- 6 animated wallpapers: aurora, stars, rain, geometric, mesh, fireflies
+- 11 clock colors with theme-aware contrast hints
+- Widgets: world clock, weather, quotes, stopwatch, pomodoro (with
+  hourly focus heatmap), calendar, alarms, sleep timer, day progress
+- Draggable widgets (position persisted)
+- PWA: install to home screen on iOS/Android, offline support
+- Dev mode: LAN QR code for phone testing (`npm run dev`)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Scripts
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install           # install deps
+npm run dev           # dev server with LAN QR
+npm run build         # tsc + vite build → dist/
+npm run preview       # serve dist/ on :4173
+npm run lint          # eslint
+npm run test:smoke    # bash tests/smoke.sh
+npm run test:e2e      # node tests/e2e.mjs
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Deployment
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Auto-deployed to Vercel on every push to `main`. Configuration:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- Build command: `npm run build`
+- Output directory: `dist`
+- Project: `screensaver` under `basrurrohman-3819s-projects`
+- Repo: [github.com/mimambas/screensaver](https://github.com/mimambas/screensaver)
+
+To deploy manually: `vercel --prod`.
+
+## PWA install
+
+iOS: open the URL in Safari → Share → "Add to Home Screen" → opens
+fullscreen standalone, no browser chrome.
+
+Android: Chrome will prompt to install, or use the menu → "Install app".
+
+## CI
+
+GitHub Actions on every push to `main`:
+
+- Lint
+- Build (tsc + vite)
+- Smoke (38 checks: assets, manifest, fonts, SVG segments, iOS meta)
+- E2E (31 tests: Puppeteer against the preview build)
