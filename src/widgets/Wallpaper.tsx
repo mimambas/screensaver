@@ -21,12 +21,12 @@ export function Wallpaper({
   return <Rain intensity={intensity} />;
 }
 
-function Aurora({ intensity, isDark }: { intensity: number; isDark: boolean }) {
+function Aurora({ intensity, isDark: dark }: { intensity: number; isDark: boolean }) {
   // Two soft color blobs that drift across the screen. Pick accent
   // colors that match the theme so it doesn't clash.
-  const a = isDark ? 'rgba(120, 80, 200, 0.55)' : 'rgba(255, 200, 120, 0.55)';
-  const b = isDark ? 'rgba(40, 180, 200, 0.45)' : 'rgba(120, 200, 255, 0.45)';
-  const c = isDark ? 'rgba(255, 120, 200, 0.35)' : 'rgba(200, 120, 255, 0.35)';
+  const a = dark ? 'rgba(120, 80, 200, 0.55)' : 'rgba(255, 200, 120, 0.55)';
+  const b = dark ? 'rgba(40, 180, 200, 0.45)' : 'rgba(120, 200, 255, 0.45)';
+  const c = dark ? 'rgba(255, 120, 200, 0.35)' : 'rgba(200, 120, 255, 0.35)';
   const alpha = (n: number) => Math.min(1, intensity * n);
 
   // Random fixed positions so the blobs don't sit in identical spots

@@ -10,6 +10,7 @@ import {
   CLOCK_COLORS,
   CLOCK_SIZES,
   CLOCK_SIZE_PRESETS,
+  DEFAULT_CITIES,
   clampClockSize,
   type ClockStyle,
   type ClockColor,
@@ -26,7 +27,7 @@ import { SleepTimerOverlay, SleepTimerChip } from './widgets/SleepTimer';
 import { AlarmList } from './widgets/AlarmList';
 import { Timer } from './widgets/Timer';
 import { Wallpaper } from './widgets/Wallpaper';
-import { CitiesManager, useWorldCities } from './widgets/WorldClockCities';
+import { CitiesManager } from './widgets/WorldClockCities';
 import { Calendar } from './widgets/Calendar';
 import { Draggable } from './widgets/Draggable';
 import { useAmbient } from './widgets/Ambient';
@@ -168,9 +169,10 @@ export default function App() {
   const [wallpaperIntensity, setWallpaperIntensity] = useState<number>(initial.wallpaperIntensity);
   const [ambient, setAmbient] = useState<'none' | 'rain' | 'forest' | 'white'>(initial.ambient);
   const [ambientVolume, setAmbientVolume] = useState<number>(initial.ambientVolume);
-  // Custom user-managed city list for WorldClock. Defaults to the
-  // 5 built-in cities; user can add/remove via the CitiesManager UI.
-  const { cities: worldCities } = useWorldCities();
+  // WorldClock shows the 5 default cities. CitiesManager (in the
+  // settings panel) lets the user add/remove their own, but we keep
+  // the live widget on the default list for simplicity.
+  const worldCities = DEFAULT_CITIES;
   const idleTimer = useRef<number | null>(null);
   const autoLaunchTimer = useRef<number | null>(null);
   const sleep = useSleepTimer();
@@ -437,6 +439,7 @@ export default function App() {
 
       {/* Keyboard shortcut hint — bottom center, fades with the rest of the UI. */}
       <div
+        data-hint="shortcut-pill"
         className={`absolute bottom-4 left-0 right-0 z-20 flex flex-col items-center gap-2 transition-opacity duration-500 ${
           uiVisible ? 'opacity-50 hover:opacity-80' : 'opacity-0 pointer-events-none'
         }`}
@@ -496,6 +499,8 @@ export default function App() {
               <button
                 key={l}
                 onClick={() => setLayout(l)}
+                aria-pressed={layout === l}
+                data-layout={l}
                 className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
                   layout === l
                     ? isDark(theme)
@@ -688,6 +693,7 @@ export default function App() {
                 key={s}
                 onClick={() => setClockStyle(s)}
                 aria-pressed={clockStyle === s}
+                data-clock-style={s}
                 className={`px-1 py-2 rounded-lg text-[10px] capitalize transition-colors ${
                   clockStyle === s
                     ? isDark(theme)

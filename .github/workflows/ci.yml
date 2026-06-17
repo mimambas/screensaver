@@ -1,0 +1,79 @@
+# GitHub Actions CI: install, build, smoke, e2e.
+#
+# We install system Chrome via apt for the puppeteer-core e2e suite.
+# Vite preview is started in the background and killed after tests.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Chrome (for puppeteer-core e2e)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq chromium-browser fonts-liberation
+          # Some sandbox flags are required when running as root in containers.
+          export CHROME_PATH=/usr/bin/chromium-browser
+
+      - name: Run smoke tests
+        env:
+          BASE_URL: http://localhost:4173
+        run: |
+          npm run preview > /tmp/preview.log 2>&1 &
+          PREVIEW_PID=$!
+          # Wait for the server to be ready (max 30s).
+          for i in $(seq 1 30); do
+            if curl -s -o /dev/null -w '%{http_code}' http://localhost:4173/ | grep -q 200; then
+              break
+            fi
+            sleep 1
+          done
+          npm run test:smoke
+          SMOKE_EXIT=$?
+          kill $PREVIEW_PID 2>/dev/null || true
+          exit $SMOKE_EXIT
+
+      - name: Run e2e tests
+        env:
+          E2E_BASE_URL: http://localhost:4173
+          CHROME_PATH: /usr/bin/chromium-browser
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: '1'
+        run: |
+          npm run preview > /tmp/preview.log 2>&1 &
+          PREVIEW_PID=$!
+          for i in $(seq 1 30); do
+            if curl -s -o /dev/null -w '%{http_code}' http://localhost:4173/ | grep -q 200; then
+              break
+            fi
+            sleep 1
+          done
+          npm run test:e2e
+          E2E_EXIT=$?
+          kill $PREVIEW_PID 2>/dev/null || true
+          exit $E2E_EXIT

@@ -1,6 +1,6 @@
-// Custom city list for WorldClock. Default to the 5 built-in cities
-// the first time, then let the user add/remove their own. Persisted
-// to localStorage so the user's custom list survives reloads.
+// Custom city list for WorldClock. CitiesManager is the only public
+// surface — App.tsx imports the default cities from clock-constants
+// directly, so we don't need to expose city state up the tree.
 
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, X } from 'lucide-react';
@@ -139,15 +139,4 @@ export function CitiesManager({ theme = 'dark' }: { theme?: ThemeName }) {
       )}
     </div>
   );
-}
-
-export function useWorldCities(): { cities: WorldCity[]; setCities: (c: WorldCity[]) => void } {
-  const [cities, setCitiesState] = useState<WorldCity[]>(loadCities);
-  useEffect(() => {
-    saveCities(cities);
-  }, [cities]);
-  const setCities = useCallback((c: WorldCity[]) => {
-    setCitiesState(c);
-  }, []);
-  return { cities, setCities };
 }

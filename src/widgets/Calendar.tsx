@@ -39,7 +39,8 @@ export function Calendar({
   // The Intl calendar treats Sunday as the first day of the week in
   // many locales (en-US), but Monday in others (id-ID, most of EU).
   // Detect by asking Intl for the first day of the week.
-  const weekInfo = new Intl.Locale(locale).getWeekInfo?.();
+  const localeObj = new Intl.Locale(locale) as Intl.Locale & { getWeekInfo?: () => { firstDay?: number } };
+  const weekInfo = localeObj.getWeekInfo?.();
   const firstDay = weekInfo?.firstDay === 7 ? 0 : weekInfo?.firstDay ?? 0; // 0=Sun..6=Sat
   const orderedWeekdays = [
     ...weekdays.slice(firstDay),

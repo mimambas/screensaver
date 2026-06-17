@@ -32,8 +32,8 @@ export function getColor(color: ClockColor): string {
   return CLOCK_COLORS.find((x) => x.id === color)?.hex ?? '#ffffff';
 }
 
-export function getSizeScale(size: ClockSize): number {
-  return typeof size === 'number' ? size : 1;
+export function getSizeScale(size: ClockSize | undefined): number {
+  return typeof size === 'number' && Number.isFinite(size) ? size : 1;
 }
 
 export function clampClockSize(size: ClockSize): ClockSize {

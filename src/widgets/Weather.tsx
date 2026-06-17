@@ -129,7 +129,15 @@ export function Weather({
         setLoading(false);
         return;
       }
-      const j = (await r.json()) as { current?: Record<string, number> };
+      const j = (await r.json()) as {
+        current?: Record<string, number>;
+        daily?: {
+          time: string[];
+          weather_code: number[];
+          temperature_2m_max: number[];
+          temperature_2m_min: number[];
+        };
+      };
       const c = j.current;
       if (!c) {
         setError('Weather data unavailable');
@@ -140,7 +148,7 @@ export function Weather({
       // arrays of length forecast_days; index 0 = today, 1..3 = next 3.
       const d = j.daily;
       const forecast: WeatherData['forecast'] = d
-        ? d.time.slice(1, 4).map((date, i) => ({
+        ? d.time.slice(1, 4).map((date: string, i: number) => ({
             date,
             high: Math.round(d.temperature_2m_max[i + 1]),
             low: Math.round(d.temperature_2m_min[i + 1]),
@@ -189,6 +197,8 @@ export function Weather({
 
   const labelClass = theme === 'dark' ? 'text-white/60' : theme === 'claude' ? 'text-[#3a2e1f]/70' : 'text-black/70';
   const muteClass = theme === 'dark' ? 'text-white/80' : theme === 'claude' ? 'text-[#3a2e1f]/80' : 'text-black/80';
+  const isDark = theme === 'dark';
+  const isClaude = theme === 'claude';
 
   if (error) {
     return (

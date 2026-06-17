@@ -18,7 +18,7 @@ export function DigitalClock({
   style = 'digital',
   color = 'white',
   theme = 'dark',
-  size = 'md',
+  size,
   soundEnabled = true,
 }: {
   style?: ClockStyle;
@@ -96,7 +96,7 @@ export function DigitalClock({
 function AnalogClock({
   color,
   now,
-  size: sizeProp = 'md',
+  size: sizeProp,
 }: {
   color: ClockColor;
   now: Date;
@@ -239,7 +239,7 @@ function AnalogClock({
 function RetroClock({
   color,
   now,
-  size: sizeProp = 'md',
+  size: sizeProp,
 }: {
   color: ClockColor;
   now: Date;
@@ -356,7 +356,7 @@ const SEG9: Record<string, string[]> = {
 function CasioClock({
   color,
   now,
-  size: sizeProp = 'md',
+  size: sizeProp,
 }: {
   color: ClockColor;
   now: Date;
@@ -725,7 +725,7 @@ function CasioSvgEmbed({
 
       // Per-flag elements (icons, AM/PM, etc.)
       for (const [id, on] of Object.entries(visibility.flags)) {
-        const el = root.getElementById(id);
+        const el = root.querySelector('#' + id);
         if (el) el.setAttribute('opacity', on ? '1' : '0');
       }
     };
@@ -1019,7 +1019,7 @@ function FlipClock({
   color,
   now,
   theme,
-  size: sizeProp = 'md',
+  size: sizeProp,
   soundEnabled = true,
 }: {
   color: ClockColor;
