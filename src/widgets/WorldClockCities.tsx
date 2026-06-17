@@ -6,37 +6,19 @@ import { useCallback, useEffect, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { DEFAULT_CITIES } from './clock-constants';
 import type { ThemeName } from './clock-constants';
+import { loadCities, saveCities } from './use-world-cities';
+import type { WorldCity } from './use-world-cities';
 
-const STORAGE_KEY = 'screensaver.worldclock.cities.v1';
+// re-export for backward-compat with any existing imports
+export type { WorldCity } from './use-world-cities';
 
-export type WorldCity = { name: string; tz: string };
-
-function loadCities(): WorldCity[] {
-  if (typeof window === 'undefined') return DEFAULT_CITIES;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_CITIES;
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_CITIES;
-    return parsed.filter(
-      (c): c is WorldCity =>
-        c != null &&
-        typeof c.name === 'string' &&
-        typeof c.tz === 'string' &&
-        c.name.length > 0 &&
-        c.tz.length > 0,
-    );
-  } catch {
-    return DEFAULT_CITIES;
-  }
-}
-
-function saveCities(cities: WorldCity[]) {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cities));
-  } catch {
-    // ignore
-  }
+// Derive a human-readable label from an IANA tz string. We use the
+// last '/' segment, but keep the full tz as the authoritative key
+// so two cities with the same prefix (e.g. America/Indiana/...)
+// stay distinct.
+function labelFromTz(tz: string): string {
+  const parts = tz.split('/');
+  return parts[parts.length - 1].replace(/_/g, ' ');
 }
 
 export function CitiesManager({ theme = 'dark' }: { theme?: ThemeName }) {
@@ -50,8 +32,12 @@ export function CitiesManager({ theme = 'dark' }: { theme?: ThemeName }) {
   const add = useCallback((tz: string) => {
     const trimmed = tz.trim();
     if (!trimmed) return;
-    setCities((cur) => [...cur, { name: trimmed, tz: trimmed }]);
+    setCities((cur) => [...cur, { name: labelFromTz(trimmed), tz: trimmed }]);
     setDraft('');
+  }, []);
+
+  const rename = useCallback((idx: number, name: string) => {
+    setCities((cur) => cur.map((c, i) => (i === idx ? { ...c, name } : c)));
   }, []);
 
   const remove = useCallback((idx: number) => {
@@ -102,19 +88,30 @@ export function CitiesManager({ theme = 'dark' }: { theme?: ThemeName }) {
         </button>
       </div>
       <div className={`text-[10px] ${hintClass}`}>
-        Enter a timezone (IANA name) — used as both label and timezone.
+        Enter an IANA timezone (e.g. <span className="font-mono">Asia/Singapore</span>) — display name auto-derived.
       </div>
-      <ul className="space-y-0.5">
+      <ul className="space-y-0.5" data-cities-list>
         {cities.map((c, i) => (
           <li
             key={`${c.tz}-${i}`}
-            className={`flex items-center justify-between px-2 py-1 rounded text-[10px] ${rowClass}`}
+            data-city-tz={c.tz}
+            className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] ${rowClass}`}
           >
-            <span className="truncate">{c.tz}</span>
+            <input
+              type="text"
+              value={c.name}
+              onChange={(e) => rename(i, e.target.value)}
+              aria-label={`Rename ${c.tz}`}
+              className={`flex-1 min-w-0 px-1 py-0.5 rounded text-[10px] outline-none ${inputClass}`}
+            />
+            <span className={`text-[9px] font-mono opacity-50 ${hintClass}`} title={c.tz}>
+              {c.tz.split('/').slice(-2).join('/')}
+            </span>
             <button
               type="button"
               onClick={() => remove(i)}
               aria-label={`Remove ${c.tz}`}
+              data-remove-city={c.tz}
               className="p-0.5 opacity-50 hover:opacity-100"
             >
               <X className="w-3 h-3" />

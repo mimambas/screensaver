@@ -10,7 +10,6 @@ import {
   CLOCK_COLORS,
   CLOCK_SIZES,
   CLOCK_SIZE_PRESETS,
-  DEFAULT_CITIES,
   clampClockSize,
   type ClockStyle,
   type ClockColor,
@@ -28,6 +27,7 @@ import { AlarmList } from './widgets/AlarmList';
 import { Timer } from './widgets/Timer';
 import { Wallpaper } from './widgets/Wallpaper';
 import { CitiesManager } from './widgets/WorldClockCities';
+import { useWorldCities } from './widgets/use-world-cities';
 import { Calendar } from './widgets/Calendar';
 import { Draggable } from './widgets/Draggable';
 import { useAmbient } from './widgets/Ambient';
@@ -173,10 +173,12 @@ export default function App() {
   const [wallpaperIntensity, setWallpaperIntensity] = useState<number>(initial.wallpaperIntensity);
   const [ambient, setAmbient] = useState<'none' | 'rain' | 'forest' | 'white'>(initial.ambient);
   const [ambientVolume, setAmbientVolume] = useState<number>(initial.ambientVolume);
-  // WorldClock shows the 5 default cities. CitiesManager (in the
-  // settings panel) lets the user add/remove their own, but we keep
-  // the live widget on the default list for simplicity.
-  const worldCities = DEFAULT_CITIES;
+  // WorldClock shows the user's custom city list (default 5 if they
+  // haven't added/removed any). The CitiesManager in the settings
+  // panel and the live WorldClock widget both read/write the same
+  // localStorage key, kept in sync via the 'storage' event inside
+  // the hook.
+  const worldCities = useWorldCities();
   const idleTimer = useRef<number | null>(null);
   const autoLaunchTimer = useRef<number | null>(null);
   const sleep = useSleepTimer();

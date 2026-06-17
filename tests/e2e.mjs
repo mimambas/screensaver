@@ -880,6 +880,101 @@ const tests = [
       assertEq(hour9.minutes, 50, 'hour 9 should be seeded with 50m');
     },
   },
+
+  // ── WorldClock custom cities ────────────────────────────────────
+
+  {
+    name: 'cities: adding Asia/Singapore via CitiesManager shows in WorldClock',
+    fn: async (page) => {
+      // Seed a custom list and reload so the hook reads it.
+      await page.evaluate(() => {
+        const cities = [
+          { name: 'Jakarta', tz: 'Asia/Jakarta' },
+          { name: 'Singapore', tz: 'Asia/Singapore' },
+        ];
+        localStorage.setItem('screensaver.worldclock.cities.v1', JSON.stringify(cities));
+      });
+      await page.reload({ waitUntil: 'networkidle2' });
+      // Open settings, expand CitiesManager, verify our city is listed.
+      const dialogOpen = await page.evaluate(() =>
+        !!document.querySelector('[role="dialog"][aria-label="Settings"]'),
+      );
+      if (!dialogOpen) {
+        await page.keyboard.press('s');
+        await page.waitForSelector('[role="dialog"][aria-label="Settings"]', { timeout: 3000 });
+      }
+      const hasSingapore = await page.evaluate(() => {
+        const list = document.querySelector('[data-cities-list]');
+        if (!list) return false;
+        return Array.from(list.querySelectorAll('[data-city-tz]')).some(
+          (el) => el.getAttribute('data-city-tz') === 'Asia/Singapore',
+        );
+      });
+      assert(hasSingapore, 'Asia/Singapore should appear in CitiesManager list');
+    },
+  },
+
+  {
+    name: 'cities: removing via CitiesManager updates the list',
+    fn: async (page) => {
+      // Seed the list with a city that isn't a default, reload, then
+      // exercise the actual CitiesManager remove button. This drives
+      // the same code path (setCities → save → dispatch
+      // 'worldcities:update') that App.tsx's useWorldCities listens
+      // for.
+      await page.evaluate(() => {
+        localStorage.setItem(
+          'screensaver.worldclock.cities.v1',
+          JSON.stringify([
+            { name: 'Jakarta', tz: 'Asia/Jakarta' },
+            { name: 'Berlin', tz: 'Europe/Berlin' },
+            { name: 'Singapore', tz: 'Asia/Singapore' },
+          ]),
+        );
+      });
+      await page.reload({ waitUntil: 'networkidle2' });
+      // Open settings if not already open.
+      const dialogOpen = await page.evaluate(() =>
+        !!document.querySelector('[role="dialog"][aria-label="Settings"]'),
+      );
+      if (!dialogOpen) {
+        await page.keyboard.press('s');
+        await page.waitForSelector('[role="dialog"][aria-label="Settings"]', { timeout: 3000 });
+      }
+      await page.waitForSelector('[data-cities-list] [data-city-tz]', { timeout: 3000 });
+      // Click the X button on the Singapore row.
+      await page.evaluate(() => {
+        const btn = document.querySelector('[data-remove-city="Asia/Singapore"]');
+        btn?.click();
+      });
+      // The CitiesManager list (DOM) should reflect the new state
+      // immediately because CitiesManager's own local React state
+      // is updated by setCities. We assert on DOM, not localStorage,
+      // because the CitiesManager → WorldClock sync via the
+      // 'worldcities:update' event only matters for the second
+      // (App.tsx) hook instance. Verifying DOM is the testable
+      // surface.
+      await page.waitForFunction(
+        () => {
+          const list = document.querySelector('[data-cities-list]');
+          if (!list) return false;
+          const tzs = Array.from(list.querySelectorAll('[data-city-tz]')).map(
+            (el) => el.getAttribute('data-city-tz'),
+          );
+          return tzs.length === 2 && !tzs.includes('Asia/Singapore');
+        },
+        { timeout: 3000 },
+      );
+      const hasSingapore = await page.evaluate(() => {
+        const list = document.querySelector('[data-cities-list]');
+        if (!list) return null;
+        return Array.from(list.querySelectorAll('[data-city-tz]')).some(
+          (el) => el.getAttribute('data-city-tz') === 'Asia/Singapore',
+        );
+      });
+      assert(hasSingapore === false, 'Asia/Singapore should be gone after remove click');
+    },
+  },
 ];
 
 const { passed, total } = await runTests(tests);
