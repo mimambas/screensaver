@@ -47,6 +47,21 @@ for path in /casio-f91w.svg /favicon.svg /icons.svg /fonts/Seven%20Segment.ttf /
   check "GET $path returns 200"                     '[ "$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL'"$path"'")" = "200" ]'
 done
 
+# 2b. PWA artifacts reachable + correct content-type.
+for path in /manifest.webmanifest /sw.js /icon-192.png /icon-512.png /icon-maskable.png; do
+  check "GET $path returns 200"                     '[ "$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL'"$path"'")" = "200" ]'
+done
+check "manifest.webmanifest is JSON"                sh -c "curl -s '$BASE_URL/manifest.webmanifest' | node -e 'let d=\"\";process.stdin.on(\"data\",c=>d+=c).on(\"end\",()=>{try{const j=JSON.parse(d);process.exit(j.name&&j.icons?0:1)}catch{process.exit(1)}})'"
+check "sw.js is a valid service worker"             sh -c "curl -s '$BASE_URL/sw.js' | head -c 200 | grep -q 'addEventListener'"
+check "icon-192.png content-type"                   '[ "$(curl -s -o /dev/null -w "%{content_type}" "$BASE_URL/icon-192.png")" = "image/png" ]'
+check "icon-512.png content-type"                   '[ "$(curl -s -o /dev/null -w "%{content_type}" "$BASE_URL/icon-512.png")" = "image/png" ]'
+
+# 2c. iOS / PWA meta tags in served index.html.
+check "index.html has manifest link"                sh -c "curl -s '$BASE_URL/' | grep -q 'rel=\"manifest\"'"
+check "index.html has apple-mobile-web-app-capable" sh -c "curl -s '$BASE_URL/' | grep -q 'apple-mobile-web-app-capable'"
+check "index.html has apple-touch-icon"             sh -c "curl -s '$BASE_URL/' | grep -q 'rel=\"apple-touch-icon\"'"
+check "index.html has theme-color"                  sh -c "curl -s '$BASE_URL/' | grep -q 'name=\"theme-color\"'"
+
 # 3. SVG has the right root tag (we don't want to drag in xmllint
 # since it's not always installed; the SVG decl is on line 1 of
 # dundalek's port).

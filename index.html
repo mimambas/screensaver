@@ -3,11 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="description" content="A minimal fullscreen clock + widgets screensaver." />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Screensaver" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <title>screensaver</title>
   </head>
   <body>
     <div id="root"></div>
+    <script type="module">
+      // Register the service worker only in production builds. In dev
+      // mode Vite's HMR + module URLs would clash with the cache, and
+      // the developer wants to see fresh code on every reload.
+      if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+        if (import.meta && import.meta.env && import.meta.env.PROD) {
+          window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').catch(() => {});
+          });
+        }
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

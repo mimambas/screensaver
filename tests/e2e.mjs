@@ -351,6 +351,122 @@ const tests = [
       await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
     },
   },
+
+  // ── PWA ──────────────────────────────────────────────────────────
+
+  {
+    name: 'pwa: <head> has manifest, apple-touch-icon, theme-color',
+    fn: async (page) => {
+      const tags = await page.evaluate(() => ({
+        manifest: !!document.querySelector('link[rel="manifest"]'),
+        appleIcon: !!document.querySelector('link[rel="apple-touch-icon"]'),
+        themeColor: !!document.querySelector('meta[name="theme-color"]'),
+        appleCapable:
+          document.querySelector('meta[name="apple-mobile-web-app-capable"]')?.getAttribute('content') ===
+          'yes',
+      }));
+      assert(tags.manifest, 'manifest link missing');
+      assert(tags.appleIcon, 'apple-touch-icon link missing');
+      assert(tags.themeColor, 'theme-color meta missing');
+      assert(tags.appleCapable, 'apple-mobile-web-app-capable=yes missing');
+    },
+  },
+
+  {
+    name: 'pwa: manifest is fetchable and references the icons',
+    fn: async (page) => {
+      const r = await page.goto(`${BASE_URL}/manifest.webmanifest?nocache=${Date.now()}`, { waitUntil: 'load' });
+      if (!r) throw new Error('no response for manifest');
+      assert(r.status() === 200, `manifest status ${r.status()}`);
+      const m = await r.json();
+      assertEq(m.name, 'Screensaver', 'manifest.name');
+      assertEq(m.display, 'standalone', 'manifest.display');
+      assert(Array.isArray(m.icons) && m.icons.length >= 2, 'manifest.icons array');
+      const sizes = m.icons.map((i) => i.sizes);
+      assert(sizes.includes('192x192'), 'icon 192 declared');
+      assert(sizes.includes('512x512'), 'icon 512 declared');
+      // Re-navigate so subsequent tests see the SPA.
+      await page.goto(BASE_URL, { waitUntil: 'networkidle2' });
+    },
+  },
+
+  {
+    name: 'pwa: icon PNG is served with image/png content-type',
+    fn: async (page) => {
+      const r = await page.goto(`${BASE_URL}/icon-192.png?nocache=${Date.now()}`, { waitUntil: 'load' });
+      if (!r) throw new Error('no response for icon');
+      assert(r.status() === 200, `icon status ${r.status()}`);
+      const ct = r.headers()['content-type'] ?? '';
+      assert(ct.startsWith('image/png'), `content-type=${ct}`);
+      const buf = await r.buffer();
+      // PNG magic: 89 50 4E 47 0D 0A 1A 0A
+      assert(
+        buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47,
+        'PNG magic bytes',
+      );
+      await page.goto(BASE_URL, { waitUntil: 'networkidle2' });
+    },
+  },
+
+  {
+    name: 'pwa: sw.js registers without throwing in production build',
+    fn: async (page) => {
+      // /sw.js is registered in production builds. Our preview server
+      // serves the dist/ output, which is the prod build.
+      const regInfo = await page.evaluate(async () => {
+        if (!('serviceWorker' in navigator)) return { supported: false };
+        try {
+          const reg = await navigator.serviceWorker.register('/sw.js');
+          // Wait for the SW to become active (or fail fast).
+          await Promise.race([
+            navigator.serviceWorker.ready,
+            new Promise((r) => setTimeout(r, 3000)),
+          ]);
+          return {
+            supported: true,
+            scope: reg.scope,
+            hasController: !!navigator.serviceWorker.controller,
+          };
+        } catch (e) {
+          return { supported: true, error: String(e) };
+        }
+      });
+      assert(regInfo.supported, 'serviceWorker not supported in this browser');
+      assert(!('error' in regInfo), `SW register threw: ${regInfo.error}`);
+    },
+  },
+
+  {
+    name: 'pwa: standalone mode disables the fullscreen toggle',
+    fn: async (page) => {
+      // Simulate being launched from the home screen. We monkey-patch
+      // matchMedia to return matches:true for (display-mode: standalone)
+      // BEFORE the App's effect runs. The simplest way is to install
+      // an init script that runs on every page load.
+      await page.evaluateOnNewDocument(() => {
+        const mql = {
+          matches: true,
+          media: '(display-mode: standalone)',
+          addEventListener() {},
+          removeEventListener() {},
+          addListener() {},
+          removeListener() {},
+          dispatchEvent() { return true; },
+          onchange: null,
+        };
+        const orig = window.matchMedia;
+        window.matchMedia = (q) => (q.includes('standalone') ? mql : orig.call(window, q));
+      });
+      await page.reload({ waitUntil: 'networkidle2' });
+      // Give React a tick to commit the isStandalone effect.
+      await new Promise((r) => setTimeout(r, 200));
+      const disabled = await page.evaluate(() => {
+        const btn = document.querySelector('button[aria-label="Toggle fullscreen"]');
+        return btn ? btn.disabled : null;
+      });
+      assert(disabled === true, `fullscreen button should be disabled in standalone, got ${disabled}`);
+    },
+  },
 ];
 
 const { passed, total } = await runTests(tests);

@@ -162,6 +162,10 @@ export default function App() {
   const [flipSound, setFlipSound] = useState(initial.flipSound);
   const [city, setCity] = useState<string>(initial.city);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // When launched as an installed PWA the browser chrome is already
+  // gone — fullscreen toggle is a no-op. Detect via display-mode media
+  // query (true on iOS home-screen launches and Android TWA).
+  const [isStandalone, setIsStandalone] = useState(false);
   const [uiVisible, setUiVisible] = useState(true);
   const [autoLaunch, setAutoLaunch] = useState<boolean>(initial.autoLaunch);
   const [autoLaunchMs, setAutoLaunchMs] = useState<number>(initial.autoLaunchMs);
@@ -257,6 +261,16 @@ export default function App() {
     const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
     document.addEventListener('fullscreenchange', onChange);
     return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
+  // Detect installed-PWA mode (iOS home screen, Android TWA, desktop
+  // installed). Updates live if the user installs while the tab is open.
+  useEffect(() => {
+    const mq = window.matchMedia('(display-mode: standalone)');
+    const update = () => setIsStandalone(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
   }, []);
 
   // Keyboard shortcuts — disabled while typing in inputs
@@ -417,10 +431,15 @@ export default function App() {
         <button
           onClick={toggleFullscreen}
           aria-label="Toggle fullscreen"
+          disabled={isStandalone}
           className={`p-2 rounded-full transition-colors ${
-            isDark(theme) ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'
+            isStandalone
+              ? 'opacity-30 cursor-default'
+              : isDark(theme)
+              ? 'bg-white/5 hover:bg-white/10'
+              : 'bg-black/5 hover:bg-black/10'
           }`}
-          title="Fullscreen (F)"
+          title={isStandalone ? 'Already fullscreen (PWA)' : 'Fullscreen (F)'}
         >
           {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
         </button>
