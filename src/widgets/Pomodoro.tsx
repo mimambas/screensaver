@@ -29,8 +29,10 @@ type PersistedState = {
 };
 
 // Daily stats: { 'YYYY-MM-DD': focusMinutes }. We keep ~30 days of
-// history for a small weekly bar chart.
-type Stats = Record<string, number>;
+// history for a small weekly bar chart. `cycles` is per-day completed
+// work sessions; older entries that pre-date the field default to 0
+// (we can fall back to Math.floor(minutes / 25) at read time).
+type Stats = Record<string, { minutes: number; cycles: number }>;
 
 function loadStats(): Stats {
   if (typeof window === 'undefined') return {};
@@ -39,7 +41,18 @@ function loadStats(): Stats {
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) return {};
-    return parsed as Stats;
+    // Migrate the v1 shape (number values) to the current object shape.
+    // Old: { 'YYYY-MM-DD': 25 }  →  New: { 'YYYY-MM-DD': { minutes: 25, cycles: 0 } }
+    const out: Stats = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof v === 'number') {
+        out[k] = { minutes: v, cycles: 0 };
+      } else if (v && typeof v === 'object') {
+        const entry = v as { minutes?: number; cycles?: number };
+        out[k] = { minutes: entry.minutes ?? 0, cycles: entry.cycles ?? 0 };
+      }
+    }
+    return out;
   } catch {
     return {};
   }
@@ -144,10 +157,13 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
               : 'work';
           if (prev === 'work') {
             setCyclesCompleted((c) => c + 1);
-            // Log this work session's minutes to the daily stats.
+            // Log this work session's minutes + a completed cycle to
+            // the daily stats. `cycles` powers the "X cycles today"
+            // achievement; minutes stays as before.
             setStats((s) => {
               const k = dayKey(new Date());
-              return { ...s, [k]: (s[k] || 0) + workMin };
+              const prev = s[k] || { minutes: 0, cycles: 0 };
+              return { ...s, [k]: { minutes: prev.minutes + workMin, cycles: prev.cycles + 1 } };
             });
           }
           setSeconds(DURATIONS[next]);
@@ -177,39 +193,72 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
     setStats({});
   };
 
-  // Compute stats summaries: total minutes in the last 7 days, and
-  // the per-day series for the bar chart.
-  const last7 = useMemo(() => {
-    const out: { key: string; label: string; minutes: number }[] = [];
+  // Compute stats summaries. We always derive both the 7d and 30d
+  // series from the same `stats` map so the toggle is instant.
+  type Day = { key: string; label: string; minutes: number; cycles: number; isToday: boolean };
+  const last30 = useMemo<Day[]>(() => {
+    const out: Day[] = [];
     const today = new Date();
-    for (let i = 6; i >= 0; i--) {
+    for (let i = 29; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
       const k = dayKey(d);
+      const entry = stats[k];
       out.push({
         key: k,
+        // Compact label: first letter of weekday (M T W T F S S).
+        // For 30d view, every 7th bar gets a fuller weekday so the
+        // user can still anchor to a specific week.
         label: d.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 1),
-        minutes: stats[k] || 0,
+        minutes: entry?.minutes ?? 0,
+        cycles: entry?.cycles ?? 0,
+        isToday: i === 0,
       });
     }
     return out;
   }, [stats]);
+  const last7 = useMemo<Day[]>(() => last30.slice(-7), [last30]);
   const total7 = useMemo(() => last7.reduce((s, d) => s + d.minutes, 0), [last7]);
+  const total30 = useMemo(() => last30.reduce((s, d) => s + d.minutes, 0), [last30]);
   const max7 = useMemo(() => Math.max(1, ...last7.map((d) => d.minutes)), [last7]);
+  const max30 = useMemo(() => Math.max(1, ...last30.map((d) => d.minutes)), [last30]);
+  const bestDay7 = useMemo(() => Math.max(0, ...last7.map((d) => d.minutes)), [last7]);
+  const bestDay30 = useMemo(() => Math.max(0, ...last30.map((d) => d.minutes)), [last30]);
+  const daysFocused7 = useMemo(
+    () => last7.filter((d) => d.minutes > 0).length,
+    [last7],
+  );
   // Current daily streak: how many consecutive days (counting back
   // from today) had at least 1 minute of focus.
   const streak = useMemo(() => {
     let s = 0;
-    const today = new Date();
     for (let i = 0; i < 30; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
-      const k = dayKey(d);
-      if ((stats[k] || 0) > 0) s++;
+      if ((last30[29 - i]?.minutes ?? 0) > 0) s++;
       else break;
     }
     return s;
-  }, [stats]);
+  }, [last30]);
+  // Longest streak within the 30d window. If the current streak is
+  // already the longest, `longestStreak === streak` and we skip the
+  // "best" badge to avoid noise.
+  const longestStreak = useMemo(() => {
+    let best = 0;
+    let cur = 0;
+    for (const d of last30) {
+      if (d.minutes > 0) {
+        cur++;
+        if (cur > best) best = cur;
+      } else {
+        cur = 0;
+      }
+    }
+    return best;
+  }, [last30]);
+  const cyclesToday = last30[29]?.cycles ?? 0;
+  // Toggle between 7d and 30d view. Default 7d for tighter signal.
+  const [range, setRange] = useState<'7d' | '30d'>('7d');
+  const series = range === '7d' ? last7 : last30;
+  const seriesMax = range === '7d' ? max7 : max30;
 
   const skip = () => {
     setRunning(false);
@@ -402,28 +451,144 @@ export function Pomodoro({ theme = 'dark' }: { theme?: ThemeName }) {
       </button>
       {showStats && (
         <div
-          className={`w-full ${labelClass} text-[10px] flex flex-col gap-0.5`}
-          aria-label="Last 7 days of focus time"
+          className={`w-full ${labelClass} text-[10px] flex flex-col gap-1.5`}
+          aria-label={`Last ${range === '7d' ? '7' : '30'} days of focus time`}
         >
-          <div className="flex items-end justify-between gap-0.5 h-8">
-            {last7.map((d) => (
-              <div key={d.key} className="flex-1 flex flex-col items-center gap-0.5">
-                <div className="w-full flex items-end h-6">
+          <div className="flex items-center justify-between gap-2">
+            <div
+              className="inline-flex rounded-full overflow-hidden border border-current/20"
+              role="group"
+              aria-label="Range"
+            >
+              {(['7d', '30d'] as const).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setRange(r)}
+                  aria-pressed={range === r}
+                  data-range={r}
+                  className={`px-2 py-0.5 transition-colors ${
+                    range === r
+                      ? theme === 'dark'
+                        ? 'bg-white/20 text-white'
+                        : theme === 'claude'
+                        ? 'bg-[#3a2e1f]/15 text-[#3a2e1f]'
+                        : 'bg-black/15 text-black'
+                      : ''
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+            <div className="opacity-70 text-right tabular-nums" data-headline>
+              {range === '7d'
+                ? `${total7} min · ${daysFocused7}d focused · best ${bestDay7}m`
+                : `${total30} min · best ${bestDay30}m`}
+            </div>
+          </div>
+          <div
+            className={`flex items-end justify-between ${
+              range === '7d' ? 'gap-1' : 'gap-0.5'
+            } ${range === '7d' ? 'h-12' : 'h-10'}`}
+          >
+            {series.map((d) => (
+              <div
+                key={d.key}
+                className="flex-1 flex flex-col items-center gap-0.5 min-w-0"
+              >
+                <div
+                  className={`w-full flex items-end ${
+                    range === '7d' ? 'h-10' : 'h-8'
+                  }`}
+                >
                   <div
-                    className={`w-full rounded-sm ${fillBg}`}
-                    style={{ height: `${(d.minutes / max7) * 100}%`, minHeight: d.minutes > 0 ? 2 : 0 }}
-                    title={`${d.minutes}m`}
+                    className={`w-full rounded-sm ${fillBg} ${
+                      d.isToday ? 'ring-1 ring-current' : ''
+                    }`}
+                    style={{
+                      height: `${(d.minutes / seriesMax) * 100}%`,
+                      minHeight: d.minutes > 0 ? 2 : 0,
+                    }}
+                    title={`${d.minutes}m · ${d.cycles} cycle${d.cycles === 1 ? '' : 's'}`}
+                    data-minutes={d.minutes}
+                    data-cycles={d.cycles}
+                    data-today={d.isToday ? '1' : '0'}
                   />
                 </div>
               </div>
             ))}
           </div>
-          <div className="flex items-center justify-between gap-0.5 opacity-60">
-            {last7.map((d) => (
-              <div key={`l-${d.key}`} className="flex-1 text-center">
-                {d.label}
+          <div
+            className={`flex items-center justify-between ${
+              range === '7d' ? 'gap-1' : 'gap-0.5'
+            } opacity-60 tabular-nums`}
+          >
+            {series.map((d, i) => (
+              <div
+                key={`l-${d.key}`}
+                className="flex-1 text-center min-w-0 truncate"
+                data-label-idx={i}
+              >
+                {/* 7d: weekday letter. 30d: weekday letter every 5 bars,
+                    otherwise blank — keeps the row readable. */}
+                {range === '7d' || i % 5 === 0 || d.isToday ? d.label : ''}
               </div>
             ))}
+          </div>
+          {/* Achievements row — only render badges that actually apply.
+              This is a one-liner so the panel never balloons. */}
+          <div className="flex flex-wrap gap-1 pt-0.5">
+            {streak >= 1 && (
+              <span
+                className={`px-1.5 py-0.5 rounded-full border border-current/20 ${
+                  theme === 'dark' ? 'bg-white/5' : 'bg-black/5'
+                }`}
+                data-achievement="streak"
+              >
+                🔥 {streak}d streak
+              </span>
+            )}
+            {longestStreak > streak && longestStreak >= 3 && (
+              <span
+                className={`px-1.5 py-0.5 rounded-full border border-current/20 ${
+                  theme === 'dark' ? 'bg-white/5' : 'bg-black/5'
+                }`}
+                data-achievement="best-streak"
+              >
+                🏆 best {longestStreak}d
+              </span>
+            )}
+            {bestDay7 >= 90 && (
+              <span
+                className={`px-1.5 py-0.5 rounded-full border border-current/20 ${
+                  theme === 'dark' ? 'bg-white/5' : 'bg-black/5'
+                }`}
+                data-achievement="best-day"
+              >
+                ⭐ best day {bestDay7}m
+              </span>
+            )}
+            {cyclesToday >= 4 && (
+              <span
+                className={`px-1.5 py-0.5 rounded-full border border-current/20 ${
+                  theme === 'dark' ? 'bg-white/5' : 'bg-black/5'
+                }`}
+                data-achievement="cycles-today"
+              >
+                📅 {cyclesToday} cycles today
+              </span>
+            )}
+            {total7 >= 600 && (
+              <span
+                className={`px-1.5 py-0.5 rounded-full border border-current/20 ${
+                  theme === 'dark' ? 'bg-white/5' : 'bg-black/5'
+                }`}
+                data-achievement="10h-week"
+              >
+                💪 10h this week
+              </span>
+            )}
           </div>
         </div>
       )}

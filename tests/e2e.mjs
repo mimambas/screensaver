@@ -467,6 +467,153 @@ const tests = [
       assert(disabled === true, `fullscreen button should be disabled in standalone, got ${disabled}`);
     },
   },
+
+  // ── Pomodoro stats ──────────────────────────────────────────────
+
+  {
+    name: 'pomodoro: 7d chart renders 7 bars by default',
+    fn: async (page) => {
+      // Seed stats with deterministic entries spanning 7 days.
+      await page.evaluate(() => {
+        const today = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const key = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        const stats = {};
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(today);
+          d.setDate(today.getDate() - i);
+          stats[key(d)] = { minutes: 25 * (i + 1), cycles: i + 1 };
+        }
+        localStorage.setItem('screensaver.pomodoro.stats.v1', JSON.stringify(stats));
+      });
+      // newPage() in _helpers clears localStorage right before returning
+      // the page, so we have to seed AFTER the per-test setup. The
+      // helpers clear once at the start of every test — re-seeding
+      // here, then reloading, is the documented escape hatch.
+      await page.reload({ waitUntil: 'networkidle2' });
+      // Sanity check the seed survived the reload.
+      const survived = await page.evaluate(
+        () => localStorage.getItem('screensaver.pomodoro.stats.v1')?.length ?? 0,
+      );
+      assert(survived > 50, `localStorage seed lost (len=${survived})`);
+      // Click to expand the stats panel.
+      const expanded = await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button')).find(
+          (b) => /stats/.test(b.textContent ?? ''),
+        );
+        if (!btn) return null;
+        btn.click();
+        return true;
+      });
+      assert(expanded, 'stats toggle button not found');
+      await page.waitForSelector('[data-range="7d"]', { timeout: 3000 });
+      const barCount = await page.evaluate(() =>
+        document.querySelectorAll('[aria-label*="7 days"] [data-minutes]').length,
+      );
+      assert(barCount === 7, `expected 7 bars in 7d view, got ${barCount}`);
+    },
+  },
+
+  {
+    name: 'pomodoro: 30d toggle switches to 30 bars',
+    fn: async (page) => {
+      // 30d button is mounted as soon as stats is open. We don't
+      // need to re-open the panel — it's still open from the prior
+      // test (per-test setup reuses the same page object).
+      // Wait defensively in case the panel is collapsed.
+      const opened = await page.evaluate(() => {
+        if (document.querySelector('[data-range="30d"]')) return true;
+        const btn = Array.from(document.querySelectorAll('button')).find(
+          (b) => /stats/.test(b.textContent ?? ''),
+        );
+        btn?.click();
+        return !!btn;
+      });
+      assert(opened, 'stats panel should be open or openable');
+      await page.waitForSelector('[data-range="30d"]', { timeout: 3000 });
+      await page.click('[data-range="30d"]');
+      // 30d view's chart container has the 30-day aria-label.
+      await page.waitForSelector('[aria-label*="30 days"]', { timeout: 3000 });
+      const barCount = await page.evaluate(() =>
+        document.querySelectorAll('[aria-label*="30 days"] [data-minutes]').length,
+      );
+      assert(barCount === 30, `expected 30 bars in 30d view, got ${barCount}`);
+    },
+  },
+
+  {
+    name: 'pomodoro: 7d seed yields total + best + focused days headline',
+    fn: async (page) => {
+      // Each test starts with a wiped localStorage. Re-seed here.
+      await page.evaluate(() => {
+        const today = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const key = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        const stats = {};
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(today);
+          d.setDate(today.getDate() - i);
+          stats[key(d)] = { minutes: 25 * (i + 1), cycles: i + 1 };
+        }
+        localStorage.setItem('screensaver.pomodoro.stats.v1', JSON.stringify(stats));
+      });
+      await page.reload({ waitUntil: 'networkidle2' });
+      // Open the panel.
+      await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button')).find(
+          (b) => /stats/.test(b.textContent ?? ''),
+        );
+        btn?.click();
+      });
+      await page.waitForSelector('[data-headline]', { timeout: 3000 });
+      const headline = await page.evaluate(() => {
+        const el = document.querySelector('[data-headline]');
+        return el?.textContent?.trim() ?? null;
+      });
+      assert(headline, 'headline not found');
+      // Seeded values: minutes 25, 50, 75, 100, 125, 150, 175 (i+1 * 25).
+      // total = 700, days focused = 7, best = 175.
+      assertMatch(headline, /700 min/, 'total minutes in headline');
+      assertMatch(headline, /7d focused/, 'days focused in headline');
+      assertMatch(headline, /best 175m/, 'best day in headline');
+    },
+  },
+
+  {
+    name: 'pomodoro: streak achievement renders when streak >= 1',
+    fn: async (page) => {
+      // Re-seed (helpers wipe between tests).
+      await page.evaluate(() => {
+        const today = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const key = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        const stats = {};
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(today);
+          d.setDate(today.getDate() - i);
+          stats[key(d)] = { minutes: 25 * (i + 1), cycles: i + 1 };
+        }
+        localStorage.setItem('screensaver.pomodoro.stats.v1', JSON.stringify(stats));
+      });
+      await page.reload({ waitUntil: 'networkidle2' });
+      await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button')).find(
+          (b) => /stats/.test(b.textContent ?? ''),
+        );
+        btn?.click();
+      });
+      await page.waitForSelector('[data-achievement="streak"]', { timeout: 3000 });
+      const streak = await page.evaluate(() => {
+        const el = document.querySelector('[data-achievement="streak"]');
+        return el?.textContent?.trim() ?? null;
+      });
+      // With 7 days of seed data, streak should be 7 (every day
+      // back from today had > 0 minutes).
+      assert(streak, 'streak achievement not rendered');
+      assertMatch(streak, /🔥/, 'flame emoji in streak badge');
+      assertMatch(streak, /7d streak/, 'streak text');
+    },
+  },
 ];
 
 const { passed, total } = await runTests(tests);
