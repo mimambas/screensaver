@@ -961,6 +961,57 @@ const tests = [
   },
 
   {
+    name: 'custom wallpaper: picker has Custom button and position picker',
+    fn: async (page) => {
+      // Open the settings panel.
+      await page.keyboard.press('s');
+      await page.waitForSelector('[role="dialog"][aria-label="Settings"]');
+      // Scroll the dialog so the wallpaper section is in view
+      // (otherwise the click below can hit a different section
+      // — the dialog is overlay-stacked above the screensaver).
+      await page.evaluate(() => {
+        const btn = document.querySelector('[data-wallpaper="custom"]');
+        btn?.scrollIntoView({ block: 'center' });
+      });
+      // Use page.click (CDP) so React 19's strict-mode passive
+      // listeners get a real mouse event sequence.
+      await page.click('[data-wallpaper="custom"]');
+      // The picker should now show the CustomWallpaperUploader
+      // (data-testid="custom-wallpaper-uploader"). Wait for the
+      // hook to finish loading (it reads from IndexedDB on mount
+      // and renders the empty state with the file picker button).
+      // Some runs the uploader div mounts first but the inner
+      // picker button is added on the second render — wait for
+      // both, then assert.
+      await page.waitForFunction(
+        () => {
+          const dialog = document.querySelector('[role="dialog"]');
+          const uploader = dialog?.querySelector('[data-testid="custom-wallpaper-uploader"]');
+          const pickBtn = dialog?.querySelector('[data-testid="custom-wallpaper-pick"]');
+          return Boolean(uploader && pickBtn);
+        },
+        { timeout: 3000 },
+      );
+      const result = await page.evaluate(() => {
+        const dialog = document.querySelector('[role="dialog"]');
+        const uploader = dialog?.querySelector('[data-testid="custom-wallpaper-uploader"]');
+        const pickBtn = dialog?.querySelector('[data-testid="custom-wallpaper-pick"]');
+        const urlInput = dialog?.querySelector('[data-testid="custom-wallpaper-url"]');
+        return {
+          hasUploader: !!uploader,
+          hasPick: !!pickBtn,
+          hasUrlInput: !!urlInput,
+          pickText: pickBtn?.textContent?.trim() ?? '',
+        };
+      });
+      assert(result.hasUploader, 'uploader should render when wallpaper=custom');
+      assert(result.hasPick, 'file picker should render in empty state');
+      assert(result.hasUrlInput, 'URL input should render');
+      assert(result.pickText.length > 0, 'pick button should have text');
+    },
+  },
+
+  {
     name: 'reorder: drag a widget handle to swap positions',
     fn: async (page) => {
       // Enable a few widgets so the reorder grid is populated.

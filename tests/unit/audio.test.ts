@@ -4,7 +4,7 @@
 // actual audio engine; AudioContext construction is a noop that
 // returns a stub).
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { mixer, useAudioMixer, __resetMixerForTests } from '../../src/widgets/audio';
 

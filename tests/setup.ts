@@ -54,3 +54,19 @@ if (!window.HTMLMediaElement.prototype.load) {
     value: vi.fn(),
   });
 }
+
+// jsdom doesn't implement URL.createObjectURL. The lib uses it
+// to make blob: URLs the <img> can load. We stub it to return a
+// stable, non-empty string so the test Image stub fires onload.
+if (!URL.createObjectURL) {
+  let counter = 0;
+  const live = new Set<string>();
+  (URL as unknown as { createObjectURL: (b: Blob) => string }).createObjectURL = () => {
+    const url = `blob:test-${++counter}`;
+    live.add(url);
+    return url;
+  };
+  (URL as unknown as { revokeObjectURL: (u: string) => void }).revokeObjectURL = (u: string) => {
+    live.delete(u);
+  };
+}

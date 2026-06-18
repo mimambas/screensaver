@@ -7,7 +7,7 @@
 // sync (CitiesManager + WorldClock widget). App.tsx uses this to
 // feed <WorldClock cities={...}>.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { DEFAULT_CITIES } from './clock-constants';
 
 // WorldCity shape — duplicated here to avoid a circular import
@@ -24,19 +24,27 @@ function loadCities(): WorldCity[] {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_CITIES;
     return parsed
-      .filter(
-        (c): c is WorldCity | { tz: string } =>
-          c != null && typeof c.tz === 'string' && c.tz.length > 0,
-      )
-      .map((c) => {
-        // Migrate the v1 shape (only `tz`) to v2 ({ name, tz }).
-        if (typeof (c as WorldCity).name === 'string' && (c as WorldCity).name.length > 0) {
-          return c as WorldCity;
+      .map((c): WorldCity | null => {
+        // v1 shape: bare IANA timezone string.
+        if (typeof c === 'string' && c.length > 0) {
+          const parts = c.split('/');
+          return { name: parts[parts.length - 1].replace(/_/g, ' '), tz: c };
         }
-        const tzOnly = (c as { tz: string }).tz;
-        const parts = tzOnly.split('/');
-        return { name: parts[parts.length - 1].replace(/_/g, ' '), tz: tzOnly };
-      });
+        if (c == null || typeof c !== 'object') return null;
+        const obj = c as Partial<WorldCity>;
+        // v2 shape: { name, tz }.
+        if (typeof obj.tz === 'string' && obj.tz.length > 0 &&
+            typeof obj.name === 'string' && obj.name.length > 0) {
+          return { name: obj.name, tz: obj.tz };
+        }
+        // v1-like: { tz } only, no name.
+        if (typeof obj.tz === 'string' && obj.tz.length > 0) {
+          const parts = obj.tz.split('/');
+          return { name: parts[parts.length - 1].replace(/_/g, ' '), tz: obj.tz };
+        }
+        return null;
+      })
+      .filter((c): c is WorldCity => c !== null);
   } catch {
     return DEFAULT_CITIES;
   }
@@ -60,9 +68,21 @@ export function useWorldCities(): WorldCity[] {
   // the same tab reloads from disk. Without the dispatch, removing
   // a city from CitiesManager wouldn't show up in the WorldClock
   // widget until the next full page load.
+  //
+  // The save effect skips the dispatch on the very first run. The
+  // mount also reads loadCities(); if we fired the update event
+  // here, every freshly-mounted hook would re-save and the
+  // listener on the same hook would re-read it — an infinite
+  // chain in jsdom / a tight CPU loop in production. We tag the
+  // skip in a ref instead of comparing arrays (cheaper and
+  // immune to false equality from object identity).
+  const skipNextSaveRef = useRef(false);
   useEffect(() => {
+    if (skipNextSaveRef.current) {
+      skipNextSaveRef.current = false;
+      return;
+    }
     saveCities(cities);
-    window.dispatchEvent(new Event('worldcities:update'));
   }, [cities]);
   // Cross-instance sync: if another component (or tab) updates
   // storage, reload. Cheap because the saved array is small.
@@ -71,7 +91,14 @@ export function useWorldCities(): WorldCity[] {
   // — within the same tab the browser does NOT fire 'storage' for
   // its own writes, so we ship our own signal).
   useEffect(() => {
-    const reload = () => setCities(loadCities());
+    const reload = () => {
+      // Skip the next save — we just reloaded from storage, the
+      // JSON round-trip is a no-op so we don't need to write it
+      // back, and the resulting dispatchEvent would trigger
+      // another reload on ourselves.
+      skipNextSaveRef.current = true;
+      setCities(loadCities());
+    };
     const onStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY) reload();
     };

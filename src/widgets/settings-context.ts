@@ -14,9 +14,12 @@ import type {
 } from './clock-constants';
 import type { WorldCity } from './use-world-cities';
 
+import type { CustomPosition } from './Wallpaper';
+
 export type Layout = 'classic' | 'split' | 'minimal';
 export type WallpaperId =
-  | 'none' | 'aurora' | 'stars' | 'rain' | 'geometric' | 'mesh' | 'fireflies';
+  | 'none' | 'aurora' | 'stars' | 'rain' | 'geometric' | 'mesh' | 'fireflies'
+  | 'custom';
 // Ambient soundscape id. Mirrors the engine's AmbientStyle but
 // adds 'none' (the off-state the UI uses to mute the engine).
 export type AmbientId =
@@ -38,6 +41,7 @@ export interface SettingsState {
   autoTheme: boolean;
   wallpaper: WallpaperId;
   wallpaperIntensity: number;
+  customWallpaperPosition: CustomPosition;
   ambient: AmbientId;
   ambientVolume: number;
   locale: Locale;
@@ -83,6 +87,7 @@ export interface SettingsActions {
   setAutoTheme: (v: boolean) => void;
   setWallpaper: (v: WallpaperId) => void;
   setWallpaperIntensity: (v: number) => void;
+  setCustomWallpaperPosition: (v: CustomPosition) => void;
   setAmbient: (v: AmbientId) => void;
   setAmbientVolume: (v: number) => void;
   setLocale: (v: Locale) => void;

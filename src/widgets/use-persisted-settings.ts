@@ -17,6 +17,7 @@ import {
   type ClockSize,
   type ClockStyle,
 } from './clock-constants';
+import type { CustomPosition } from './Wallpaper';
 import type { ThemeName } from './theme-presets';
 import type { Layout, WallpaperId, AmbientId } from './settings-context';
 
@@ -29,6 +30,7 @@ export interface PersistedSettings {
   autoTheme: boolean;
   wallpaper: WallpaperId;
   wallpaperIntensity: number;
+  customWallpaperPosition: CustomPosition;
   ambient: AmbientId;
   ambientVolume: number;
   clockStyle: ClockStyle;
@@ -69,6 +71,7 @@ export const DEFAULT_SETTINGS: PersistedSettings = {
   autoTheme: false,
   wallpaper: 'aurora',
   wallpaperIntensity: 0.4,
+  customWallpaperPosition: 'cover',
   ambient: 'none',
   ambientVolume: 0.3,
   clockStyle: 'digital',
@@ -129,6 +132,7 @@ export interface UsePersistedSettings {
     setAutoTheme: (v: boolean) => void;
     setWallpaper: (v: WallpaperId) => void;
     setWallpaperIntensity: (v: number) => void;
+    setCustomWallpaperPosition: (v: CustomPosition) => void;
     setAmbient: (v: AmbientId) => void;
     setAmbientVolume: (v: number) => void;
     setClockStyle: (v: ClockStyle) => void;
@@ -173,6 +177,7 @@ export function usePersistedSettings(): UsePersistedSettings {
   const [autoTheme, setAutoTheme] = useState<boolean>(initial.autoTheme);
   const [wallpaper, setWallpaper] = useState<WallpaperId>(initial.wallpaper);
   const [wallpaperIntensity, setWallpaperIntensity] = useState<number>(initial.wallpaperIntensity);
+  const [customWallpaperPosition, setCustomWallpaperPosition] = useState<CustomPosition>(initial.customWallpaperPosition);
   const [ambient, setAmbient] = useState<AmbientId>(initial.ambient);
   const [ambientVolume, setAmbientVolume] = useState<number>(initial.ambientVolume);
   const [clockStyle, setClockStyle] = useState<ClockStyle>(initial.clockStyle);
@@ -223,7 +228,7 @@ export function usePersistedSettings(): UsePersistedSettings {
   // lost if the user closes the tab mid-edit.
   const snapshotRef = useRef<PersistedSettings>({
     layout, theme, autoTheme,
-    wallpaper, wallpaperIntensity, ambient, ambientVolume,
+    wallpaper, wallpaperIntensity, customWallpaperPosition, ambient, ambientVolume,
     clockStyle, clockColor, customColor, clockSize, flipSound,
     city, dateLocale, dateFormat, autoLaunch, autoLaunchMs,
     showDate, showCalendar, showWorldClock, showQuote, showWeather,
@@ -236,7 +241,7 @@ export function usePersistedSettings(): UsePersistedSettings {
   useEffect(() => {
     snapshotRef.current = {
       layout, theme, autoTheme,
-      wallpaper, wallpaperIntensity, ambient, ambientVolume,
+      wallpaper, wallpaperIntensity, customWallpaperPosition, ambient, ambientVolume,
       clockStyle, clockColor, customColor, clockSize, flipSound,
       city, dateLocale, dateFormat, autoLaunch, autoLaunchMs,
       showDate, showCalendar, showWorldClock, showQuote, showWeather,
@@ -247,7 +252,7 @@ export function usePersistedSettings(): UsePersistedSettings {
     };
   }, [
     layout, theme, autoTheme,
-    wallpaper, wallpaperIntensity, ambient, ambientVolume,
+    wallpaper, wallpaperIntensity, customWallpaperPosition, ambient, ambientVolume,
     clockStyle, clockColor, customColor, clockSize, flipSound,
     city, dateLocale, dateFormat, autoLaunch, autoLaunchMs,
     showDate, showCalendar, showWorldClock, showQuote, showWeather,
@@ -308,6 +313,7 @@ export function usePersistedSettings(): UsePersistedSettings {
     setAutoTheme(DEFAULT_SETTINGS.autoTheme);
     setWallpaper(DEFAULT_SETTINGS.wallpaper);
     setWallpaperIntensity(DEFAULT_SETTINGS.wallpaperIntensity);
+    setCustomWallpaperPosition(DEFAULT_SETTINGS.customWallpaperPosition);
     setAmbient(DEFAULT_SETTINGS.ambient);
     setAmbientVolume(DEFAULT_SETTINGS.ambientVolume);
     setClockStyle(DEFAULT_SETTINGS.clockStyle);
@@ -346,7 +352,7 @@ export function usePersistedSettings(): UsePersistedSettings {
 
   const state = useMemo<PersistedSettings>(() => ({
     layout, theme, autoTheme,
-    wallpaper, wallpaperIntensity, ambient, ambientVolume,
+    wallpaper, wallpaperIntensity, customWallpaperPosition, ambient, ambientVolume,
     clockStyle, clockColor, customColor, clockSize, flipSound,
     city, dateLocale, dateFormat, autoLaunch, autoLaunchMs,
     showDate, showCalendar, showWorldClock, showQuote, showWeather,
@@ -356,7 +362,7 @@ export function usePersistedSettings(): UsePersistedSettings {
     muteMaster, muteChime, muteAmbient, muteNotif,
   }), [
     layout, theme, autoTheme,
-    wallpaper, wallpaperIntensity, ambient, ambientVolume,
+    wallpaper, wallpaperIntensity, customWallpaperPosition, ambient, ambientVolume,
     clockStyle, clockColor, customColor, clockSize, flipSound,
     city, dateLocale, dateFormat, autoLaunch, autoLaunchMs,
     showDate, showCalendar, showWorldClock, showQuote, showWeather,
@@ -370,7 +376,7 @@ export function usePersistedSettings(): UsePersistedSettings {
     state,
     set: {
       setLayout, setTheme, setAutoTheme,
-      setWallpaper, setWallpaperIntensity, setAmbient, setAmbientVolume,
+      setWallpaper, setWallpaperIntensity, setCustomWallpaperPosition, setAmbient, setAmbientVolume,
       setClockStyle, setClockColor, setCustomColor, setClockSize, adjustClockSize,
       setFlipSound, setCity, setDateLocale, setDateFormat, setAutoLaunch, setAutoLaunchMs,
       setShowDate, setShowCalendar, setShowWorldClock, setShowQuote, setShowWeather,

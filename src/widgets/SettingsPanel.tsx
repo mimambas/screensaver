@@ -3,11 +3,12 @@
 // need to receive any props. Theme tokens come from `THEMES[theme]`
 // so the panel itself honors the active theme.
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import { CLOCK_STYLES, CLOCK_COLORS, CLOCK_SIZES, CLOCK_SIZE_PRESETS, normalizeHex } from './clock-constants';
 import { THEME_NAMES } from './theme-presets';
 import { CitiesManager } from './WorldClockCities';
+import { useCustomWallpaper } from '../lib/custom-wallpaper';
 import { useT, useLocale } from '../i18n';
 import { useSettings } from './settings-context';
 import { isDark, isClaude } from './theme-helpers';
@@ -164,7 +165,7 @@ export function SettingsPanel() {
       {/* Wallpaper */}
       <Section title={t('settings.section.wallpaper')}>
         <div className="grid grid-cols-4 gap-1 mb-2">
-          {(['none', 'aurora', 'stars', 'rain', 'geometric', 'mesh', 'fireflies'] as const).map((w) => (
+          {(['none', 'aurora', 'stars', 'rain', 'geometric', 'mesh', 'fireflies', 'custom'] as const).map((w) => (
             <button
               key={w}
               type="button"
@@ -185,7 +186,21 @@ export function SettingsPanel() {
                   : 'hover:bg-black/10 text-black/80'
               }`}
             >
-              {w === 'none' ? '∅' : w === 'aurora' ? '🌌' : w === 'stars' ? '✨' : w === 'rain' ? '🌧' : w === 'geometric' ? '◯' : w === 'mesh' ? '🌀' : '🪲'}{' '}
+              {w === 'none'
+                ? '∅'
+                : w === 'aurora'
+                ? '🌌'
+                : w === 'stars'
+                ? '✨'
+                : w === 'rain'
+                ? '🌧'
+                : w === 'geometric'
+                ? '◯'
+                : w === 'mesh'
+                ? '🌀'
+                : w === 'fireflies'
+                ? '🪲'
+                : '🖼'}{' '}
               {w}
             </button>
           ))}
@@ -197,6 +212,7 @@ export function SettingsPanel() {
             onChange={s.setWallpaperIntensity}
           />
         )}
+        {s.wallpaper === 'custom' && <CustomWallpaperUploader />}
       </Section>
 
       {/* Ambient */}
@@ -934,6 +950,245 @@ function MixerRow({
       >
         {muted ? t('settings.audio.unmute') : t('settings.audio.mute')}
       </button>
+    </div>
+  );
+}
+
+// CustomWallpaperUploader — shown in the settings panel only
+// when the user picks "custom" wallpaper. Two paths to load an
+// image: a file picker (drag-drop also works via the wrapper
+// div) and a URL field. Position is a 4-button segmented
+// control (cover / contain / center / tile). Removing the
+// custom image reverts to the default wallpaper on the next
+// refresh.
+function CustomWallpaperUploader() {
+  const t = useT();
+  const s = useSettings();
+  const { custom, loading, error, save, remove } = useCustomWallpaper();
+  const [dragOver, setDragOver] = useState(false);
+  const [url, setUrl] = useState('');
+  const [urlError, setUrlError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setUrlError(t('settings.wallpaper.error'));
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setUrlError(t('settings.wallpaper.error'));
+      return;
+    }
+    setUrlError(null);
+    await save(file);
+  };
+
+  const handleUrl = async () => {
+    if (!url.trim()) return;
+    setUrlError(null);
+    try {
+      const res = await fetch(url.trim());
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      if (!blob.type.startsWith('image/')) throw new Error('not an image');
+      await save(blob);
+      setUrl('');
+    } catch {
+      setUrlError(t('settings.wallpaper.error'));
+    }
+  };
+
+  const isDark = s.theme === 'dark';
+  const isClaude = s.theme === 'claude';
+  const cardClass = isDark
+    ? 'bg-white/5 border-white/10'
+    : isClaude
+    ? 'bg-[#e8dcc4]/30 border-[#3a2e1f]/15'
+    : 'bg-black/5 border-black/10';
+  const subText = isDark
+    ? 'text-white/50'
+    : isClaude
+    ? 'text-[#3a2e1f]/50'
+    : 'text-black/50';
+  const subStrong = isDark
+    ? 'text-white/70'
+    : isClaude
+    ? 'text-[#3a2e1f]/70'
+    : 'text-black/70';
+
+  const positions: { id: 'cover' | 'contain' | 'center' | 'tile'; label: string }[] = [
+    { id: 'cover', label: t('settings.wallpaper.position.cover') },
+    { id: 'contain', label: t('settings.wallpaper.position.contain') },
+    { id: 'center', label: t('settings.wallpaper.position.center') },
+    { id: 'tile', label: t('settings.wallpaper.position.tile') },
+  ];
+
+  return (
+    <div
+      data-testid="custom-wallpaper-uploader"
+      className={`mt-2 p-2 rounded-lg border ${cardClass} ${
+        dragOver ? (isDark ? 'ring-2 ring-white/40' : 'ring-2 ring-black/30') : ''
+      }`}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) void handleFile(file);
+      }}
+    >
+      {loading ? (
+        <div className={`text-[10px] ${subText}`}>...</div>
+      ) : custom ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className={`text-[10px] ${subStrong}`}>{t('settings.wallpaper.custom')}</span>
+            <span
+              data-testid="custom-wallpaper-meta"
+              className={`text-[10px] ${subText}`}
+            >
+              {t('settings.wallpaper.customSize', {
+                w: custom.width,
+                h: custom.height,
+                kb: Math.round(custom.size / 1024),
+              })}
+            </span>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className={`ml-auto text-[10px] px-2 py-0.5 rounded ${
+                isDark
+                  ? 'bg-white/10 hover:bg-white/20 text-white'
+                  : isClaude
+                  ? 'bg-[#3a2e1f]/10 hover:bg-[#3a2e1f]/20 text-[#3a2e1f]'
+                  : 'bg-black/10 hover:bg-black/20 text-black'
+              }`}
+            >
+              {t('common.reset')}
+            </button>
+            <button
+              type="button"
+              onClick={() => void remove()}
+              data-testid="custom-wallpaper-remove"
+              className={`text-[10px] px-2 py-0.5 rounded ${
+                isDark
+                  ? 'bg-white/10 hover:bg-white/20 text-white'
+                  : isClaude
+                  ? 'bg-[#3a2e1f]/10 hover:bg-[#3a2e1f]/20 text-[#3a2e1f]'
+                  : 'bg-black/10 hover:bg-black/20 text-black'
+              }`}
+            >
+              {t('settings.wallpaper.customRemove')}
+            </button>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleFile(file);
+            }}
+            className="hidden"
+          />
+          <div>
+            <div className={`text-[10px] uppercase tracking-widest mb-1 ${subText}`}>
+              {t('settings.wallpaper.position')}
+            </div>
+            <div className="grid grid-cols-4 gap-1">
+              {positions.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  data-testid={`custom-position-${p.id}`}
+                  onClick={() => s.setCustomWallpaperPosition(p.id)}
+                  aria-pressed={s.customWallpaperPosition === p.id}
+                  className={`text-[10px] py-1 rounded transition-colors ${
+                    s.customWallpaperPosition === p.id
+                      ? isDark
+                        ? 'bg-white/20 text-white'
+                        : isClaude
+                        ? 'bg-[#3a2e1f]/15 text-[#3a2e1f]'
+                        : 'bg-black/15 text-black'
+                      : isDark
+                      ? 'bg-white/5 hover:bg-white/10 text-white/70'
+                      : isClaude
+                      ? 'bg-[#3a2e1f]/5 hover:bg-[#3a2e1f]/10 text-[#3a2e1f]/70'
+                      : 'bg-black/5 hover:bg-black/10 text-black/70'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            data-testid="custom-wallpaper-pick"
+            className={`w-full text-[10px] py-3 rounded border-dashed border-2 ${
+              isDark
+                ? 'border-white/20 text-white/70 hover:bg-white/5'
+                : isClaude
+                ? 'border-[#3a2e1f]/20 text-[#3a2e1f]/70 hover:bg-[#3a2e1f]/5'
+                : 'border-black/20 text-black/70 hover:bg-black/5'
+            }`}
+          >
+            {t('settings.wallpaper.dropHere')} · {t('settings.wallpaper.customHint')}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleFile(file);
+            }}
+            className="hidden"
+          />
+          <div className="flex items-center gap-1">
+            <input
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder={t('settings.wallpaper.customUrl')}
+              data-testid="custom-wallpaper-url"
+              className={`flex-1 bg-transparent text-[10px] outline-none ${
+                isDark ? 'text-white' : isClaude ? 'text-[#3a2e1f]' : 'text-black'
+              }`}
+            />
+            <button
+              type="button"
+              onClick={() => void handleUrl()}
+              data-testid="custom-wallpaper-url-load"
+              className={`text-[10px] px-2 py-0.5 rounded ${
+                isDark
+                  ? 'bg-white/10 hover:bg-white/20 text-white'
+                  : isClaude
+                  ? 'bg-[#3a2e1f]/10 hover:bg-[#3a2e1f]/20 text-[#3a2e1f]'
+                  : 'bg-black/10 hover:bg-black/20 text-black'
+              }`}
+            >
+              {t('settings.wallpaper.customLoad')}
+            </button>
+          </div>
+        </div>
+      )}
+      {(error || urlError) && (
+        <div
+          data-testid="custom-wallpaper-error"
+          className="text-[10px] text-red-500 mt-1"
+        >
+          {urlError || error}
+        </div>
+      )}
     </div>
   );
 }

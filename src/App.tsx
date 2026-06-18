@@ -219,6 +219,7 @@ export default function App() {
             style={state.wallpaper}
             intensity={state.wallpaperIntensity}
             isDark={isDark(state.theme)}
+            customPosition={state.customWallpaperPosition}
           />
         )}
 

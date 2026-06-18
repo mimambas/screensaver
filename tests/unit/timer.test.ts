@@ -8,8 +8,8 @@
 // without fake timers + perf.now stubs — instead we cover the
 // user-facing behaviour (preset click snaps totalMs).
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { renderHook } from '@testing-library/react';
 import { Timer } from '../../src/widgets/Timer';
 
 const STORAGE_KEY = 'screensaver.timer.v1';

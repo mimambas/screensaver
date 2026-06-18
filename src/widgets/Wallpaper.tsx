@@ -5,23 +5,39 @@
 // When `reducedMotion` is true we skip the CSS animations entirely
 // (still a valid decorative backdrop, just frozen). The user picked
 // the wallpaper for its palette/texture, not for the motion.
+//
+// `style: 'custom'` reads the user-uploaded image from IndexedDB
+// (see lib/custom-wallpaper). The custom branch is intentionally
+// simple: an <img> with object-fit chosen by the user (cover /
+// contain / center / tile), opacity = intensity.
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { usePrefersReducedMotion } from '../lib/use-prefers-reduced-motion';
+import { useCustomWallpaper } from '../lib/custom-wallpaper';
 
-export type WallpaperStyle = 'aurora' | 'stars' | 'rain' | 'geometric' | 'mesh' | 'fireflies';
+export type WallpaperStyle =
+  | 'aurora' | 'stars' | 'rain' | 'geometric' | 'mesh' | 'fireflies'
+  | 'custom';
 
-const STYLES: WallpaperStyle[] = ['aurora', 'stars', 'rain', 'geometric', 'mesh', 'fireflies'];
+const STYLES: WallpaperStyle[] = [
+  'aurora', 'stars', 'rain', 'geometric', 'mesh', 'fireflies', 'custom',
+];
+
+/** Position mode for the custom-image wallpaper. Mirrors CSS
+ *  object-fit so the user gets a 1:1 mental model. */
+export type CustomPosition = 'cover' | 'contain' | 'center' | 'tile';
 
 export function Wallpaper({
   style,
   intensity,
   isDark,
+  customPosition = 'cover',
 }: {
   style: WallpaperStyle;
   /** 0..1. We multiply the per-layer alpha by this. */
   intensity: number;
   isDark: boolean;
+  customPosition?: CustomPosition;
 }) {
   const reduced = usePrefersReducedMotion();
   if (style === 'aurora') return <Aurora intensity={intensity} isDark={isDark} reduced={reduced} />;
@@ -29,7 +45,8 @@ export function Wallpaper({
   if (style === 'rain') return <Rain intensity={intensity} reduced={reduced} />;
   if (style === 'geometric') return <Geometric intensity={intensity} isDark={isDark} reduced={reduced} />;
   if (style === 'mesh') return <Mesh intensity={intensity} isDark={isDark} reduced={reduced} />;
-  return <Fireflies intensity={intensity} isDark={isDark} reduced={reduced} />;
+  if (style === 'fireflies') return <Fireflies intensity={intensity} isDark={isDark} reduced={reduced} />;
+  return <Custom intensity={intensity} position={customPosition} />;
 }
 
 // Re-export the style list so settings can render buttons without
@@ -412,6 +429,84 @@ function Fireflies({ intensity, isDark: dark, reduced }: { intensity: number; is
           }}
         />
       ))}
+    </div>
+  );
+}
+
+// ── CustomWallpaper — user-uploaded image, position via CSS
+//    object-fit. No keyframes (the image is whatever it is).
+//    The opacity = intensity controls the layer's visibility
+//    just like the other wallpapers. A subtle scale-in on
+//    first render (skipped under reduced motion).
+
+function Custom({
+  intensity,
+  position,
+}: {
+  intensity: number;
+  position: CustomPosition;
+}) {
+  const reduced = usePrefersReducedMotion();
+  const { custom, loading, error } = useCustomWallpaper();
+  // entered is a one-shot "has the fade-in played" flag. We
+  // flip it via a microtask in the same render rather than in
+  // an effect, so the transition runs on the first paint after
+  // the IndexedDB load resolves. (Setting state in an effect
+  // would delay the transition by one tick.)
+  const [entered, setEntered] = useState(false);
+  // Defer the setState to the next paint (post-mount) without
+  // using useEffect — Promise.resolve().then() runs after the
+  // current commit, which is what we want for a fade-in.
+  if (custom && !entered) {
+    void Promise.resolve().then(() => setEntered(true));
+  }
+
+  // Tile / center modes use background-image + background-size.
+  // Cover / contain use <img> + object-fit. We split the two
+  // branches so the CSS stays obvious.
+  if (position === 'tile' || position === 'center') {
+    return (
+      <div
+        data-wallpaper="custom"
+        data-loading={loading ? 'true' : undefined}
+        data-error={error ? 'true' : undefined}
+        className="absolute inset-0 pointer-events-none transition-opacity duration-1000"
+        style={{
+          backgroundImage: custom ? `url(${custom.url})` : undefined,
+          backgroundRepeat: position === 'tile' ? 'repeat' : 'no-repeat',
+          backgroundPosition: 'center',
+          backgroundSize: position === 'tile' ? 'auto' : undefined,
+          opacity: custom ? (entered ? Math.min(1, intensity * 1.5) : 0) : 0,
+          transform: entered ? 'scale(1)' : reduced ? 'none' : 'scale(1.02)',
+          transition: 'opacity 600ms ease-out, transform 800ms ease-out',
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      data-wallpaper="custom"
+      data-loading={loading ? 'true' : undefined}
+      data-error={error ? 'true' : undefined}
+      className="absolute inset-0 pointer-events-none overflow-hidden"
+    >
+      {custom && (
+        <img
+          src={custom.url}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: position,
+            opacity: entered ? Math.min(1, intensity * 1.5) : 0,
+            transform: entered ? 'scale(1)' : reduced ? 'none' : 'scale(1.02)',
+            transition: 'opacity 600ms ease-out, transform 800ms ease-out',
+          }}
+        />
+      )}
     </div>
   );
 }
