@@ -227,6 +227,13 @@ export const catalog: Catalog = {
   'timer.start': { en: 'Start timer', id: 'Mulai timer' },
   'timer.pause': { en: 'Pause timer', id: 'Jeda timer' },
   'timer.reset': { en: 'Reset timer', id: 'Reset timer' },
+  'timer.presets': { en: 'Presets', id: 'Preset' },
+  'timer.preset': { en: '{n} min', id: '{n} mnt' },
+  'timer.custom': { en: 'Custom…', id: 'Kustom…' },
+  'timer.shortcutHint': {
+    en: 'Space play/pause · R reset · 1-9 select preset',
+    id: 'Spasi play/jeda · R reset · 1-9 pilih preset',
+  },
 
   // ── calendar ──────────────────────────────────────────────────
   'calendar.prevMonth': { en: 'Previous month', id: 'Bulan sebelumnya' },

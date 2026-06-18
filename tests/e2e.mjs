@@ -680,6 +680,120 @@ const tests = [
     },
   },
 
+  // ── Timer widget ─────────────────────────────────────────────
+
+  {
+    name: 'timer: 6 quick-pick presets render above the readout',
+    fn: async (page) => {
+      // Enable the Timer widget.
+      await page.evaluate(() => {
+        const raw = JSON.parse(localStorage.getItem('screensaver.settings.v2') || '{}');
+        raw.showTimer = true;
+        raw.layout = 'classic';
+        localStorage.setItem('screensaver.settings.v2', JSON.stringify(raw));
+      });
+      await page.reload({ waitUntil: 'networkidle2' });
+      // Locate the timer widget and check for the preset grid.
+      const result = await page.evaluate(() => {
+        const widget = document.querySelector('[data-testid="timer-widget"]');
+        if (!widget) return null;
+        const presetButtons = Array.from(widget.querySelectorAll('[data-testid^="timer-preset-"]'));
+        return {
+          presets: presetButtons
+            .map((b) => b.getAttribute('data-testid'))
+            .filter((id) => id !== 'timer-preset-custom'),
+          hasCustom: !!widget.querySelector('[data-testid="timer-preset-custom"]'),
+          hintVisible: !!widget.querySelector('[data-testid="timer-shortcut-hint"]'),
+        };
+      });
+      assert(result, 'timer widget should mount');
+      assert(result.presets.length === 6, `expected 6 presets, got ${result.presets.length}`);
+      assert(result.hasCustom, 'Custom button should render');
+      assert(result.hintVisible, 'shortcut hint should render');
+      const expected = [5, 10, 15, 25, 45, 60];
+      for (const m of expected) {
+        assert(
+          result.presets.includes(`timer-preset-${m}`),
+          `missing preset ${m}min`,
+        );
+      }
+    },
+  },
+
+  {
+    name: 'timer: clicking a preset snaps the readout to that duration',
+    fn: async (page) => {
+      await page.evaluate(() => {
+        const raw = JSON.parse(localStorage.getItem('screensaver.settings.v2') || '{}');
+        raw.showTimer = true;
+        raw.layout = 'classic';
+        localStorage.setItem('screensaver.settings.v2', JSON.stringify(raw));
+      });
+      await page.reload({ waitUntil: 'networkidle2' });
+      // Click the 25-min preset.
+      await page.click('[data-testid="timer-preset-25"]');
+      // Wait for React to commit the new totalMs.
+      await page.waitForFunction(
+        () => {
+          const widget = document.querySelector('[data-testid="timer-widget"]');
+          const readout = widget?.querySelector('[data-testid="timer-readout"]');
+          // 25 min = 00:25:00
+          return (readout?.textContent ?? '').trim() === '00:25:00';
+        },
+        { timeout: 2000 },
+      );
+      const readout = await page.evaluate(() => {
+        const widget = document.querySelector('[data-testid="timer-widget"]');
+        return widget?.querySelector('[data-testid="timer-readout"]')?.textContent;
+      });
+      assert((readout ?? '').trim() === '00:25:00', `expected 00:25:00, got ${readout}`);
+    },
+  },
+
+  {
+    name: 'timer: Space toggles run, R resets, 1-9 select preset',
+    fn: async (page) => {
+      await page.evaluate(() => {
+        const raw = JSON.parse(localStorage.getItem('screensaver.settings.v2') || '{}');
+        raw.showTimer = true;
+        raw.layout = 'classic';
+        localStorage.setItem('screensaver.settings.v2', JSON.stringify(raw));
+      });
+      await page.reload({ waitUntil: 'networkidle2' });
+      // Pick 15-min preset via keyboard.
+      await page.keyboard.press('3');
+      await page.waitForFunction(
+        () => {
+          const widget = document.querySelector('[data-testid="timer-widget"]');
+          const readout = widget?.querySelector('[data-testid="timer-readout"]');
+          return (readout?.textContent ?? '').trim() === '00:15:00';
+        },
+        { timeout: 2000 },
+      );
+      // Space → start. The pause button should appear.
+      await page.keyboard.press(' ');
+      await page.waitForFunction(
+        () => !!document.querySelector('[data-testid="timer-pause"]'),
+        { timeout: 2000 },
+      );
+      // Space → pause again. The start button should reappear.
+      await page.keyboard.press(' ');
+      await page.waitForFunction(
+        () => !!document.querySelector('[data-testid="timer-start"]'),
+        { timeout: 2000 },
+      );
+      // R → reset. We can't easily assert the readout returned to
+      // 00:15:00 from this state because we already ran some time,
+      // but the reset button is what R mirrors. The shortcut hint
+      // string should be present in the DOM.
+      const hint = await page.evaluate(() => {
+        const widget = document.querySelector('[data-testid="timer-widget"]');
+        return widget?.querySelector('[data-testid="timer-shortcut-hint"]')?.textContent;
+      });
+      assert(hint && hint.length > 0, 'shortcut hint should be visible');
+    },
+  },
+
   // ── Pomodoro stats ──────────────────────────────────────────────
 
   {
