@@ -9,7 +9,6 @@
 // by the user keeps its default position.
 
 import { DigitalClock, WorldClock, DateDisplay } from './Clock';
-import { Pomodoro } from './Pomodoro';
 import { Stopwatch } from './Stopwatch';
 import { Weather } from './Weather';
 import { Quotes } from './Quotes';
@@ -19,9 +18,19 @@ import { Timer } from './Timer';
 import { Calendar } from './Calendar';
 import { Draggable, ReorderDragProvider } from './Draggable';
 import { useDraggableOrder } from './draggable-order';
-import { Breathing } from './Breathing';
-import { Affirmation } from './Affirmation';
+import { lazy, Suspense } from 'react';
 import { useSettings } from './settings-context';
+
+// Heavy widgets — code-split. The first paint only needs the
+// clock, the layout shell, and the always-on small widgets.
+// Pomodoro (charts), Breathing (animation), and Affirmation
+// (catalog) each pull in a non-trivial amount of code that
+// doesn't need to ship in the initial bundle. The Suspense
+// boundary falls back to a 1-line "..." so the user sees no
+// layout shift when the chunk loads.
+const Pomodoro = lazy(() => import('./Pomodoro').then((m) => ({ default: m.Pomodoro })));
+const Breathing = lazy(() => import('./Breathing').then((m) => ({ default: m.Breathing })));
+const Affirmation = lazy(() => import('./Affirmation').then((m) => ({ default: m.Affirmation })));
 
 // ── sortByOrder — given a list of widget ids and the persisted
 //    order, return a new array sorted to match. Ids that don't
@@ -84,7 +93,13 @@ export function LayoutClassic() {
   // user re-enables a widget it lands back at the position they
   // last had it.
   const renderBand = (band: Array<{ id: string; el: React.ReactNode }>) =>
-    band.filter((b) => b.el !== null).map((b) => <div key={b.id}>{b.el}</div>);
+    band.filter((b) => b.el !== null).map((b) => (
+      <div key={b.id}>
+        <Suspense fallback={<div className="opacity-50 text-[10px]">...</div>}>
+          {b.el}
+        </Suspense>
+      </div>
+    ));
 
   return (
     <ReorderDragProvider>

@@ -879,6 +879,15 @@ const tests = [
   {
     name: 'pomodoro: 7d chart renders 7 bars by default',
     fn: async (page) => {
+      // Enable the Pomodoro widget — the lazy chunk loads on
+      // first show. Without the explicit waitForSelector below,
+      // the test races the lazy load and misses the stats panel.
+      await page.evaluate(() => {
+        const raw = JSON.parse(localStorage.getItem('screensaver.settings.v2') || '{}');
+        raw.showPomodoro = true;
+        raw.layout = 'classic';
+        localStorage.setItem('screensaver.settings.v2', JSON.stringify(raw));
+      });
       // Seed stats with deterministic entries spanning 7 days.
       await page.evaluate(() => {
         const today = new Date();
@@ -897,6 +906,11 @@ const tests = [
       // helpers clear once at the start of every test — re-seeding
       // here, then reloading, is the documented escape hatch.
       await page.reload({ waitUntil: 'networkidle2' });
+      // Wait for the Pomodoro widget to mount (it's lazy now).
+      await page.waitForFunction(
+        () => Array.from(document.querySelectorAll('button')).some((b) => /stats/.test(b.textContent ?? '')),
+        { timeout: 5000 },
+      );
       // Sanity check the seed survived the reload.
       const survived = await page.evaluate(
         () => localStorage.getItem('screensaver.pomodoro.stats.v1')?.length ?? 0,

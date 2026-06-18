@@ -3,7 +3,6 @@
 // Useful when the user wants to glance at the side panels.
 
 import { DigitalClock, WorldClock, DateDisplay } from './Clock';
-import { Pomodoro } from './Pomodoro';
 import { Stopwatch } from './Stopwatch';
 import { Weather } from './Weather';
 import { Quotes } from './Quotes';
@@ -11,9 +10,15 @@ import { DayProgress } from './DayProgress';
 import { AlarmList } from './AlarmList';
 import { Timer } from './Timer';
 import { Calendar } from './Calendar';
-import { Breathing } from './Breathing';
-import { Affirmation } from './Affirmation';
+import { lazy, Suspense } from 'react';
 import { useSettings } from './settings-context';
+
+// Heavy widgets — code-split. See LayoutClassic for the
+// rationale; we duplicate the lazy/Suspense setup here so each
+// layout module is self-contained.
+const Pomodoro = lazy(() => import('./Pomodoro').then((m) => ({ default: m.Pomodoro })));
+const Breathing = lazy(() => import('./Breathing').then((m) => ({ default: m.Breathing })));
+const Affirmation = lazy(() => import('./Affirmation').then((m) => ({ default: m.Affirmation })));
 
 export function LayoutSplit() {
   const s = useSettings();
@@ -42,20 +47,24 @@ export function LayoutSplit() {
       </div>
 
       {/* Center: tools */}
-      <div className="flex flex-col items-center justify-center gap-8 border-r border-white/10 pr-6">
-        {s.showPomodoro && <Pomodoro theme={s.theme} />}
-        {s.showStopwatch && <Stopwatch theme={s.theme} />}
-        {s.showTimer && <Timer theme={s.theme} />}
-        {s.showBreathing && <Breathing theme={s.theme} />}
-        {s.showAlarms && <AlarmList theme={s.theme} />}
-      </div>
+      <Suspense fallback={<div className="opacity-50 text-[10px]">...</div>}>
+        <div className="flex flex-col items-center justify-center gap-8 border-r border-white/10 pr-6">
+          {s.showPomodoro && <Pomodoro theme={s.theme} />}
+          {s.showStopwatch && <Stopwatch theme={s.theme} />}
+          {s.showTimer && <Timer theme={s.theme} />}
+          {s.showBreathing && <Breathing theme={s.theme} />}
+          {s.showAlarms && <AlarmList theme={s.theme} />}
+        </div>
+      </Suspense>
 
       {/* Right: info */}
-      <div className="flex flex-col items-start justify-center gap-6">
-        {s.showWeather && <Weather theme={s.theme} city={s.city} />}
-        {s.showQuote && <Quotes theme={s.theme} />}
-        {s.showAffirmation && <Affirmation theme={s.theme} />}
-      </div>
+      <Suspense fallback={<div className="opacity-50 text-[10px]">...</div>}>
+        <div className="flex flex-col items-start justify-center gap-6">
+          {s.showWeather && <Weather theme={s.theme} city={s.city} />}
+          {s.showQuote && <Quotes theme={s.theme} />}
+          {s.showAffirmation && <Affirmation theme={s.theme} />}
+        </div>
+      </Suspense>
     </div>
   );
 }
