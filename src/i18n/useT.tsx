@@ -82,5 +82,4 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 // useT and useLocale live in useT-helper.ts so this file (a .tsx
 // component file) can keep "only exports components" semantics
 // for react-refresh fast refresh. Re-exported from index.ts.
-/* eslint-disable react-refresh/only-export-components */
 export { useT, useLocale } from './useT-helper';

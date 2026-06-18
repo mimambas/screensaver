@@ -86,6 +86,12 @@ export async function requestPermission(): Promise<NotificationStatus> {
 
 let _swRegPromise: Promise<ServiceWorkerRegistration | null> | null = null;
 
+/** Test-only: reset the SW registration cache so the next call
+ *  re-invokes the registration flow. */
+export function __resetSWCacheForTests(): void {
+  _swRegPromise = null;
+}
+
 /** Get (or register) the service worker. Cached for the page lifetime. */
 function getServiceWorkerRegistration(): Promise<ServiceWorkerRegistration | null> {
   if (_swRegPromise) return _swRegPromise;

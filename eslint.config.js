@@ -18,5 +18,14 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    // The react-refresh/only-export-components rule insists that
+    // each file only export components. Our hook + provider pair
+    // (useReorder + ReorderDragProvider) is a natural unit and
+    // we already extracted the order store to its own file. The
+    // remaining pair is a known exception; linting it in
+    // isolation would force a third file for no real benefit.
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
   },
 ])

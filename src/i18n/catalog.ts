@@ -276,10 +276,14 @@ export const catalog: Catalog = {
 
   // ── draggable widget ─────────────────────────────────────────
   'draggable.handleTitle': {
-    en: 'Drag to move, double-click to reset',
-    id: 'Tarik untuk pindah, klik dua kali untuk reset',
+    en: 'Drag to reorder, double-click to position',
+    id: 'Tarik untuk urutkan, klik dua kali untuk posisi',
   },
   'draggable.resetTitle': { en: 'Reset position', id: 'Reset posisi' },
+  'draggable.reorderHint': {
+    en: 'Drag any handle to swap widget positions',
+    id: 'Tarik handle untuk menukar posisi widget',
+  },
 
   // ── breathing exercise widget ────────────────────────────────
   'breathing.title': { en: 'Breathing', id: 'Pernapasan' },
