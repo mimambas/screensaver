@@ -11,6 +11,7 @@ import { CitiesManager } from './WorldClockCities';
 import { useT, useLocale } from '../i18n';
 import { useSettings } from './settings-context';
 import { isDark, isClaude } from './theme-helpers';
+import { playChimePreset, mixer } from './audio';
 
 const SETTINGS_KEY = 'screensaver.settings.v2';
 
@@ -245,6 +246,94 @@ export function SettingsPanel() {
             onChange={s.setAmbientVolume}
           />
         )}
+      </Section>
+
+      {/* Audio mixer — independent per-stage volumes + mutes.
+          Reads/writes go through the persisted-settings hook so
+          reload restores the user's mix. The actual gain values
+          are pushed into the AudioMixer singleton by App.tsx. */}
+      <Section title={t('settings.section.audio')}>
+        <div className="space-y-1.5">
+          <MixerRow
+            label={t('settings.audio.master')}
+            value={s.masterVolume}
+            muted={s.muteMaster}
+            onVolume={s.setMasterVolume}
+            onMute={s.setMuteMaster}
+            t={t}
+          />
+          <MixerRow
+            label={t('settings.audio.chime')}
+            value={s.chimeVolume}
+            muted={s.muteChime}
+            onVolume={s.setChimeVolume}
+            onMute={s.setMuteChime}
+            t={t}
+          />
+          <MixerRow
+            label={t('settings.audio.notif')}
+            value={s.notifVolume}
+            muted={s.muteNotif}
+            onVolume={s.setNotifVolume}
+            onMute={s.setMuteNotif}
+            t={t}
+          />
+          {/* Ambient has no separate volume field here — it's
+              controlled by the ambient picker above. We expose
+              the mute so the user can silence the rain without
+              losing the soundscape selection. */}
+          <div className="flex items-center justify-between">
+            <span
+              className={`text-[11px] ${
+                isDark(s.theme) ? 'text-white/80' : isClaude(s.theme) ? 'text-[#3a2e1f]/80' : 'text-black/80'
+              }`}
+            >
+              Ambient
+            </span>
+            <button
+              type="button"
+              data-testid="mixer-mute-ambient"
+              onClick={() => s.setMuteAmbient(!s.muteAmbient)}
+              className={`text-[10px] px-2 py-1 rounded transition-colors ${
+                s.muteAmbient
+                  ? isDark(s.theme)
+                    ? 'bg-white/20 text-white'
+                    : isClaude(s.theme)
+                    ? 'bg-[#3a2e1f]/15 text-[#3a2e1f]'
+                    : 'bg-black/15 text-black'
+                  : isDark(s.theme)
+                  ? 'bg-white/5 hover:bg-white/10 text-white/70'
+                  : isClaude(s.theme)
+                  ? 'bg-[#3a2e1f]/5 hover:bg-[#3a2e1f]/10 text-[#3a2e1f]/70'
+                  : 'bg-black/5 hover:bg-black/10 text-black/70'
+              }`}
+            >
+              {s.muteAmbient ? t('settings.audio.unmute') : t('settings.audio.mute')}
+            </button>
+          </div>
+        </div>
+        <button
+          type="button"
+          data-testid="mixer-test"
+          onClick={() => {
+            // Plays one chime + one notif in sequence so the
+            // user can hear both stages without waiting for an
+            // alarm or pomodoro to fire.
+            mixer.ensureContext();
+            playChimePreset('bell');
+            window.setTimeout(() => playChimePreset('ding'), 800);
+          }}
+          className={`mt-2 w-full text-[11px] px-2 py-1.5 rounded transition-colors ${
+            isDark(s.theme)
+              ? 'bg-white/10 hover:bg-white/20 text-white'
+              : isClaude(s.theme)
+              ? 'bg-[#3a2e1f]/10 hover:bg-[#3a2e1f]/20 text-[#3a2e1f]'
+              : 'bg-black/10 hover:bg-black/20 text-black'
+          }`}
+          title={t('settings.audio.testHint')}
+        >
+          {t('settings.audio.test')}
+        </button>
       </Section>
 
       {/* Clock style */}
@@ -786,5 +875,65 @@ function Range({
         className="flex-1 accent-current"
       />
     </label>
+  );
+}
+
+// MixerRow — compact horizontal slider + mute toggle. Used for
+// the master / chime / notif stages in the Audio Mixer section.
+function MixerRow({
+  label,
+  value,
+  muted,
+  onVolume,
+  onMute,
+  t,
+}: {
+  label: string;
+  value: number;
+  muted: boolean;
+  onVolume: (v: number) => void;
+  onMute: (v: boolean) => void;
+  t: (k: string) => string;
+}) {
+  const s = useSettings();
+  return (
+    <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg">
+      <span
+        className={`text-[11px] w-24 truncate ${
+          isDark(s.theme) ? 'text-white/80' : isClaude(s.theme) ? 'text-[#3a2e1f]/80' : 'text-black/80'
+        }`}
+      >
+        {label}
+      </span>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.05}
+        value={value}
+        onChange={(e) => onVolume(Number(e.target.value))}
+        className="flex-1 accent-current"
+      />
+      <button
+        type="button"
+        onClick={() => onMute(!muted)}
+        data-testid={`mixer-mute-${label.toLowerCase().split(' ')[0]}`}
+        className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
+          muted
+            ? isDark(s.theme)
+              ? 'bg-white/20 text-white'
+              : isClaude(s.theme)
+              ? 'bg-[#3a2e1f]/15 text-[#3a2e1f]'
+              : 'bg-black/15 text-black'
+            : isDark(s.theme)
+            ? 'bg-white/5 hover:bg-white/10 text-white/70'
+            : isClaude(s.theme)
+            ? 'bg-[#3a2e1f]/5 hover:bg-[#3a2e1f]/10 text-[#3a2e1f]/70'
+            : 'bg-black/5 hover:bg-black/10 text-black/70'
+        }`}
+      >
+        {muted ? t('settings.audio.unmute') : t('settings.audio.mute')}
+      </button>
+    </div>
   );
 }

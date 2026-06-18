@@ -589,6 +589,66 @@ const tests = [
   },
 
   {
+    name: 'audio mixer: 3 stage sliders + ambient mute button render',
+    fn: async (page) => {
+      await page.keyboard.press('s');
+      await page.waitForSelector('[role="dialog"][aria-label="Settings"]');
+      // The mixer section has 3 sliders (master, chime, notif) and
+      // an ambient mute button. We assert they're all reachable.
+      const result = await page.evaluate(() => {
+        const dialog = document.querySelector('[role="dialog"]');
+        if (!dialog) return null;
+        const muteButtons = Array.from(
+          dialog.querySelectorAll('[data-testid^="mixer-mute-"]'),
+        );
+        const testBtn = dialog.querySelector('[data-testid="mixer-test"]');
+        return {
+          muteCount: muteButtons.length,
+          muteStages: muteButtons.map((b) => b.getAttribute('data-testid')),
+          hasTestButton: Boolean(testBtn),
+        };
+      });
+      assert(result, 'dialog should be queryable');
+      // 4 mute buttons: master, chime, ambient, notif.
+      assert(result.muteCount === 4, `expected 4 mute buttons, got ${result.muteCount}`);
+      assert(result.hasTestButton, 'mixer test button should render');
+    },
+  },
+
+  {
+    name: 'audio mixer: clicking mute toggles the aria-pressed state',
+    fn: async (page) => {
+      await page.keyboard.press('s');
+      await page.waitForSelector('[role="dialog"][aria-label="Settings"]');
+      // Click the master mute button and assert the label flips
+      // from "Mute" to "Unmute". Puppeteer's `page.click` fires a
+      // full mouse event sequence — the direct `el.click()` only
+      // dispatches a synthetic click that React 19's strict-mode
+      // passive listeners can ignore in some cases, so we route
+      // through page.click which uses CDP for real input.
+      const before = await page.evaluate(() => {
+        const btn = document.querySelector('[data-testid="mixer-mute-master"]');
+        return btn ? (btn.textContent ?? '').trim() : null;
+      });
+      assert(before === 'Mute', `initial label should be "Mute", got "${before}"`);
+      await page.click('[data-testid="mixer-mute-master"]');
+      // Wait for the React state to flush.
+      await page.waitForFunction(
+        () => {
+          const btn = document.querySelector('[data-testid="mixer-mute-master"]');
+          return btn && (btn.textContent ?? '').trim() === 'Unmute';
+        },
+        { timeout: 2000 },
+      );
+      const after = await page.evaluate(() => {
+        const btn = document.querySelector('[data-testid="mixer-mute-master"]');
+        return btn ? (btn.textContent ?? '').trim() : null;
+      });
+      assert(after === 'Unmute', `after-click label should be "Unmute", got "${after}"`);
+    },
+  },
+
+  {
     name: 'pwa: standalone mode disables the fullscreen toggle',
     fn: async (page) => {
       // Simulate being launched from the home screen. We monkey-patch

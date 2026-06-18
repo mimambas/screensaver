@@ -13,6 +13,7 @@
 // 5+ concurrent voices.
 
 import { useEffect, useRef } from 'react';
+import { mixer } from './audio';
 
 export type AmbientStyle =
   | 'rain'
@@ -554,35 +555,37 @@ const BUILDERS: Record<AmbientStyle, ScapeBuilder> = {
 // changes tear down the old scape and start the new one.
 class AmbientEngine {
   private ctx: AudioContext | null = null;
-  private master: GainNode | null = null;
+  private gain: GainNode | null = null;
   private scape: Soundscape | null = null;
   private style: AmbientStyle | null = null;
 
   start(style: AmbientStyle, volume: number) {
     if (this.style === style && this.ctx) {
-      if (this.master) this.master.gain.value = Math.max(0, Math.min(1, volume));
+      if (this.gain) this.gain.gain.value = Math.max(0, Math.min(1, volume));
       return;
     }
     this.stop();
     this.style = style;
-    const Ctor =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!Ctor) return;
-    this.ctx = new Ctor();
-    const ctx = this.ctx;
-    this.master = ctx.createGain();
-    this.master.gain.value = Math.max(0, Math.min(1, volume));
-    this.master.connect(ctx.destination);
+    // The mixer owns the AudioContext + master gain. We route
+    // through the 'ambient' input so the settings panel can mute
+    // or re-volume the ambient stage independently.
+    const ctx = mixer.ensureContext();
+    if (!ctx) return;
+    const input = mixer.input('ambient');
+    if (!input) return;
+    this.ctx = ctx;
+    this.gain = ctx.createGain();
+    this.gain.gain.value = Math.max(0, Math.min(1, volume));
+    this.gain.connect(input);
 
     const builder = BUILDERS[style];
     this.scape = builder(ctx);
-    this.scape.out.connect(this.master);
+    this.scape.out.connect(this.gain);
     if (ctx.state === 'suspended') void ctx.resume();
   }
 
   setVolume(v: number) {
-    if (this.master) this.master.gain.value = Math.max(0, Math.min(1, v));
+    if (this.gain) this.gain.gain.value = Math.max(0, Math.min(1, v));
   }
 
   stop() {
@@ -590,14 +593,15 @@ class AmbientEngine {
       try { this.scape.teardown(); } catch { /* node already gone */ }
       this.scape = null;
     }
-    if (this.master) {
-      try { this.master.disconnect(); } catch { /* noop */ }
-      this.master = null;
+    if (this.gain) {
+      try { this.gain.disconnect(); } catch { /* noop */ }
+      this.gain = null;
     }
-    if (this.ctx) {
-      void this.ctx.close().catch(() => { /* ignore */ });
-      this.ctx = null;
-    }
+    // We do NOT close the AudioContext — the mixer is a process
+    // singleton, and other stages may still be using it. We just
+    // null out our local refs so the next start() builds a fresh
+    // gain.
+    this.ctx = null;
     this.style = null;
   }
 }

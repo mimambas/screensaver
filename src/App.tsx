@@ -12,6 +12,7 @@ import { SleepTimerOverlay, SleepTimerChip } from './widgets/SleepTimer';
 import { Wallpaper } from './widgets/Wallpaper';
 import { useWorldCities } from './widgets/use-world-cities';
 import { useAmbient } from './widgets/Ambient';
+import { mixer } from './widgets/audio';
 import { useT, useLocale } from './i18n';
 import {
   SettingsContext,
@@ -167,6 +168,23 @@ export default function App() {
   // Drive ambient sound engine. Renders nothing. Called before any
   // early returns (hooks rules).
   useAmbient(state.ambient, state.ambientVolume);
+
+  // Sync the persisted mixer volumes + mutes into the running
+  // AudioMixer. The mixer is a process singleton so we apply
+  // each setting once per render — WebAudio's setTargetAtTime is
+  // cheap (no audio glitches on rapid value changes).
+  useEffect(() => {
+    mixer.setVolume('master', state.masterVolume);
+    mixer.setVolume('chime', state.chimeVolume);
+    mixer.setVolume('notif', state.notifVolume);
+    mixer.setMuted('master', state.muteMaster);
+    mixer.setMuted('chime', state.muteChime);
+    mixer.setMuted('ambient', state.muteAmbient);
+    mixer.setMuted('notif', state.muteNotif);
+  }, [
+    state.masterVolume, state.chimeVolume, state.notifVolume,
+    state.muteMaster, state.muteChime, state.muteAmbient, state.muteNotif,
+  ]);
 
   // While asleep, render nothing — black overlay handles the rest.
   if (sleep.isAsleep) {

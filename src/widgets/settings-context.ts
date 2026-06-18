@@ -67,6 +67,14 @@ export interface SettingsState {
   showTimer: boolean;
   showBreathing: boolean;
   showAffirmation: boolean;
+  // Audio mixer
+  masterVolume: number;
+  chimeVolume: number;
+  notifVolume: number;
+  muteMaster: boolean;
+  muteChime: boolean;
+  muteAmbient: boolean;
+  muteNotif: boolean;
 }
 
 export interface SettingsActions {
@@ -101,6 +109,13 @@ export interface SettingsActions {
   setShowTimer: (v: boolean) => void;
   setShowBreathing: (v: boolean) => void;
   setShowAffirmation: (v: boolean) => void;
+  setMasterVolume: (v: number) => void;
+  setChimeVolume: (v: number) => void;
+  setNotifVolume: (v: number) => void;
+  setMuteMaster: (v: boolean) => void;
+  setMuteChime: (v: boolean) => void;
+  setMuteAmbient: (v: boolean) => void;
+  setMuteNotif: (v: boolean) => void;
   toggleShow: (key: keyof Pick<
     SettingsState,
     | 'showDate'

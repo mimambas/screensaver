@@ -53,6 +53,14 @@ export interface PersistedSettings {
   showTimer: boolean;
   showBreathing: boolean;
   showAffirmation: boolean;
+  // Audio mixer
+  masterVolume: number;
+  chimeVolume: number;
+  notifVolume: number;
+  muteMaster: boolean;
+  muteChime: boolean;
+  muteAmbient: boolean;
+  muteNotif: boolean;
 }
 
 export const DEFAULT_SETTINGS: PersistedSettings = {
@@ -73,6 +81,17 @@ export const DEFAULT_SETTINGS: PersistedSettings = {
   dateFormat: 'long',
   autoLaunch: false,
   autoLaunchMs: 5 * 60_000,
+  // Audio mixer — per-stage volumes and mutes. The defaults are
+  // sensible: master at 80% (full blast on a fresh device is too
+  // aggressive), chime at 70% (pomodoro/alarm), ambient at 50%
+  // (rain shouldn't drown out everything), notif at 80%.
+  masterVolume: 0.8,
+  chimeVolume: 0.7,
+  notifVolume: 0.8,
+  muteMaster: false,
+  muteChime: false,
+  muteAmbient: false,
+  muteNotif: false,
   showDate: true,
   showCalendar: false,
   showWorldClock: true,
@@ -135,6 +154,13 @@ export interface UsePersistedSettings {
     setShowTimer: (v: boolean) => void;
     setShowBreathing: (v: boolean) => void;
     setShowAffirmation: (v: boolean) => void;
+    setMasterVolume: (v: number) => void;
+    setChimeVolume: (v: number) => void;
+    setNotifVolume: (v: number) => void;
+    setMuteMaster: (v: boolean) => void;
+    setMuteChime: (v: boolean) => void;
+    setMuteAmbient: (v: boolean) => void;
+    setMuteNotif: (v: boolean) => void;
     turnOffAll: () => void;
     resetToDefaults: () => void;
   };
@@ -177,6 +203,18 @@ export function usePersistedSettings(): UsePersistedSettings {
   const [showTimer, setShowTimer] = useState(initial.showTimer);
   const [showBreathing, setShowBreathing] = useState(initial.showBreathing);
   const [showAffirmation, setShowAffirmation] = useState(initial.showAffirmation);
+  const [masterVolume, setMasterVolumeRaw] = useState(initial.masterVolume);
+  const [chimeVolume, setChimeVolumeRaw] = useState(initial.chimeVolume);
+  const [notifVolume, setNotifVolumeRaw] = useState(initial.notifVolume);
+  const [muteMaster, setMuteMaster] = useState(initial.muteMaster);
+  const [muteChime, setMuteChime] = useState(initial.muteChime);
+  const [muteAmbient, setMuteAmbient] = useState(initial.muteAmbient);
+  const [muteNotif, setMuteNotif] = useState(initial.muteNotif);
+  // Clamp the persisted volume to 0..1 so storage tampering
+  // (or a sloppy v1→v2 migration) can't yield gain > 1.
+  const setMasterVolume = (v: number) => setMasterVolumeRaw(Math.max(0, Math.min(1, v)));
+  const setChimeVolume = (v: number) => setChimeVolumeRaw(Math.max(0, Math.min(1, v)));
+  const setNotifVolume = (v: number) => setNotifVolumeRaw(Math.max(0, Math.min(1, v)));
 
   // Debounced write to localStorage. We hold the latest snapshot in
   // a ref and flush on a 250ms timer; this turns 60 writes/min from
@@ -191,6 +229,8 @@ export function usePersistedSettings(): UsePersistedSettings {
     showDate, showCalendar, showWorldClock, showQuote, showWeather,
     showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
     showBreathing, showAffirmation,
+    masterVolume, chimeVolume, notifVolume,
+    muteMaster, muteChime, muteAmbient, muteNotif,
   });
 
   useEffect(() => {
@@ -202,6 +242,8 @@ export function usePersistedSettings(): UsePersistedSettings {
       showDate, showCalendar, showWorldClock, showQuote, showWeather,
       showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
       showBreathing, showAffirmation,
+      masterVolume, chimeVolume, notifVolume,
+      muteMaster, muteChime, muteAmbient, muteNotif,
     };
   }, [
     layout, theme, autoTheme,
@@ -211,6 +253,8 @@ export function usePersistedSettings(): UsePersistedSettings {
     showDate, showCalendar, showWorldClock, showQuote, showWeather,
     showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
     showBreathing, showAffirmation,
+    masterVolume, chimeVolume, notifVolume,
+    muteMaster, muteChime, muteAmbient, muteNotif,
   ]);
 
   useEffect(() => {
@@ -288,6 +332,13 @@ export function usePersistedSettings(): UsePersistedSettings {
     setShowTimer(DEFAULT_SETTINGS.showTimer);
     setShowBreathing(DEFAULT_SETTINGS.showBreathing);
     setShowAffirmation(DEFAULT_SETTINGS.showAffirmation);
+    setMasterVolume(DEFAULT_SETTINGS.masterVolume);
+    setChimeVolume(DEFAULT_SETTINGS.chimeVolume);
+    setNotifVolume(DEFAULT_SETTINGS.notifVolume);
+    setMuteMaster(DEFAULT_SETTINGS.muteMaster);
+    setMuteChime(DEFAULT_SETTINGS.muteChime);
+    setMuteAmbient(DEFAULT_SETTINGS.muteAmbient);
+    setMuteNotif(DEFAULT_SETTINGS.muteNotif);
   // React Compiler inference: all setters in scope. Empty deps
   // (the setters are stable for the lifetime of the component).
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -301,6 +352,8 @@ export function usePersistedSettings(): UsePersistedSettings {
     showDate, showCalendar, showWorldClock, showQuote, showWeather,
     showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
     showBreathing, showAffirmation,
+    masterVolume, chimeVolume, notifVolume,
+    muteMaster, muteChime, muteAmbient, muteNotif,
   }), [
     layout, theme, autoTheme,
     wallpaper, wallpaperIntensity, ambient, ambientVolume,
@@ -309,6 +362,8 @@ export function usePersistedSettings(): UsePersistedSettings {
     showDate, showCalendar, showWorldClock, showQuote, showWeather,
     showStopwatch, showPomodoro, showDayProgress, showAlarms, showTimer,
     showBreathing, showAffirmation,
+    masterVolume, chimeVolume, notifVolume,
+    muteMaster, muteChime, muteAmbient, muteNotif,
   ]);
 
   return {
@@ -321,6 +376,8 @@ export function usePersistedSettings(): UsePersistedSettings {
       setShowDate, setShowCalendar, setShowWorldClock, setShowQuote, setShowWeather,
       setShowStopwatch, setShowPomodoro, setShowDayProgress, setShowAlarms, setShowTimer,
       setShowBreathing, setShowAffirmation,
+      setMasterVolume, setChimeVolume, setNotifVolume,
+      setMuteMaster, setMuteChime, setMuteAmbient, setMuteNotif,
       turnOffAll,
       resetToDefaults,
     },
