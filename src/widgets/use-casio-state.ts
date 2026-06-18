@@ -326,24 +326,51 @@ export function useCasioState(): CasioHandle {
 
     // Below: synchronous side-effects (bip, flag toggles, increment
     // kicks) based on the current menu/action.
-    setFlags((f) => {
-      if (!state) return f;
-      if (state.menu !== 'dailyAlarm' || state.action !== 'default') return f;
-      // Cycle the alarmOn + timeSignal pair in this order:
-      //   both on → only signal on → only alarm on → both on
-      // (the reference toggles the off one ON, not strictly cycle; this
-      // is a simplification that matches the demo's behaviour for the
-      // 3 typical states.)
-      if (f.alarmOn && f.hourlyChime) return { ...f, alarmOn: false, hourlyChime: true };
-      if (!f.alarmOn && f.hourlyChime) return { ...f, alarmOn: true, hourlyChime: true };
-      return { ...f, alarmOn: true, hourlyChime: false };
-    });
+    //
+    // For edit-* actions on dailyAlarm/setDateTime, the immediate
+    // (single-tap) press must also increment — not just the auto-
+    // repeat that fires 1s later. The reference's `pressA` always
+    // increments on a-down; the auto-repeat is a separate concern.
+    // We use the latest state via the ref so a stale closure doesn't
+    // miss the increment on render-boundary timing.
+    const liveState = stateRef.current;
+    // For dailyAlarm/default, the increment-kick lives in the
+    // auto-repeat path (via stateRef.current.action === 'edit-*'
+    // doesn't apply here) — but the flag toggle runs synchronously.
+    if (liveState.menu === 'dailyAlarm' && liveState.action === 'edit-hours') {
+      setAlarmTime((d) => {
+        const nd = new Date(d);
+        nd.setHours(nd.getHours() + 1);
+        return nd;
+      });
+    } else if (liveState.menu === 'dailyAlarm' && liveState.action === 'edit-minutes') {
+      setAlarmTime((d) => {
+        const nd = new Date(d);
+        nd.setMinutes(nd.getMinutes() + 1);
+        return nd;
+      });
+    } else if (liveState.menu === 'setDateTime' && liveState.action === 'edit-minutes') {
+      setDateTimeOffset((o) => o - 60_000);
+    } else if (liveState.menu === 'setDateTime' && liveState.action === 'edit-hours') {
+      setDateTimeOffset((o) => o - 3_600_000);
+    }
+    // The flag toggle is also state-gated. Skip it when the user
+    // is mid-edit or in a non-dailyAlarm menu.
+    if (liveState.menu === 'dailyAlarm' && liveState.action === 'default') {
+      setFlags((f) => {
+        // Cycle the alarmOn + timeSignal pair in this order:
+        //   both on → only signal on → only alarm on → both on
+        if (f.alarmOn && f.hourlyChime) return { ...f, alarmOn: false, hourlyChime: true };
+        if (!f.alarmOn && f.hourlyChime) return { ...f, alarmOn: true, hourlyChime: true };
+        return { ...f, alarmOn: true, hourlyChime: false };
+      });
+    }
 
     playBip();
 
     // Start an auto-repeat timer for edit-* actions. After 1s, start
     // incrementing every 100ms.
-    if (state && state.action.startsWith('edit-')) {
+    if (liveState && liveState.action.startsWith('edit-')) {
       const id = setTimeout(() => {
         const intervalId = setInterval(() => {
           // Re-read latest state and increment the field.
@@ -354,7 +381,7 @@ export function useCasioState(): CasioHandle {
       }, 1000);
       autoRepeatTimeoutRef.current = id;
     }
-  }, [state]);
+  }, []); // live state is read via ref, so this useCallback is stable.
 
   const releaseA = useCallback(() => {
     // On a-up:
