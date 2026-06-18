@@ -222,15 +222,31 @@ const tests = [
       // 1) Set Casio style via S → pick casio.
       await page.keyboard.press('s');
       await page.waitForSelector('[role="dialog"][aria-label="Settings"]');
-      await page.evaluate(() => {
-        const btns = Array.from(document.querySelectorAll('button[aria-pressed]'));
-        const casio = btns.find((b) => /casio/i.test(b.textContent ?? ''));
-        casio?.click();
-      });
+      await page.click('[data-clock-style="casio"]');
+      // Wait for the debounced localStorage write (250ms timer in
+      // usePersistedSettings). Without this, the reload races the
+      // pending write and the persisted record doesn't include the
+      // new style.
+      await page.waitForFunction(
+        () => {
+          try {
+            const raw = JSON.parse(localStorage.getItem('screensaver.settings.v2') || '{}');
+            return raw.clockStyle === 'casio';
+          } catch {
+            return false;
+          }
+        },
+        { timeout: 3000 },
+      );
       // 2) Reload and confirm the style persisted.
       await page.reload({ waitUntil: 'networkidle2' });
       // Casio's signature is the embedded /casio-f91w.svg <object>.
-      // Give React a moment to mount the rendered component.
+      // The lazy chunk loads on the first render of the style;
+      // wait for it before asserting.
+      await page.waitForFunction(
+        () => !!document.querySelector('object[type="image/svg+xml"][data="/casio-f91w.svg"]'),
+        { timeout: 5000 },
+      );
       const present = await page.evaluate(() =>
         !!document.querySelector('object[type="image/svg+xml"][data="/casio-f91w.svg"]'),
       );
@@ -1067,29 +1083,23 @@ const tests = [
   {
     name: 'wallpaper: switching to fireflies renders 25 firefly particles',
     fn: async (page) => {
-      // Click via DOM API (not puppeteer .click) so the test isn't
-      // thrown off by the button being a child of the still-open
-      // settings dialog. The dialog may close on Escape between
-      // tests; if so, re-open.
-      const ready = await page.evaluate(() => {
-        if (!document.querySelector('[role="dialog"][aria-label="Settings"]')) {
-          // Re-open via the global S key handler — but we can't
-          // dispatch keys here. Just check; the previous test
-          // already opened it.
-          return false;
-        }
-        return true;
-      });
-      if (!ready) {
-        await page.keyboard.press('s');
-        await page.waitForSelector('[role="dialog"][aria-label="Settings"]');
-      }
-      await page.evaluate(() => {
-        const btn = document.querySelector('[data-wallpaper="fireflies"]');
-        btn?.click();
-      });
-      // Wait for the fireflies root + child data-firefly spans to mount.
-      await page.waitForSelector('[data-wallpaper="fireflies"] [data-firefly]', { timeout: 5000 });
+      // The fireflies renderer is heavy (25 spans with random
+      // positions). On the first run after the SW registers, the
+      // browser occasionally drops frames while parsing the SVG
+      // background CSS — wait for the firefly root to mount
+      // before counting. We also wait for the count to actually
+      // hit 25, since the spans render in a second pass after
+      // the parent mounts.
+      await page.keyboard.press('s');
+      await page.waitForSelector('[role="dialog"][aria-label="Settings"]');
+      await page.click('[data-wallpaper="fireflies"]');
+      // The Wallpaper component is rendered behind the dialog.
+      // Wait for the root + child spans to mount.
+      await page.waitForSelector('[data-wallpaper="fireflies"]', { timeout: 5000 });
+      await page.waitForFunction(
+        () => document.querySelectorAll('[data-wallpaper="fireflies"] [data-firefly]').length === 25,
+        { timeout: 5000 },
+      );
       const count = await page.evaluate(() =>
         document.querySelectorAll('[data-wallpaper="fireflies"] [data-firefly]').length,
       );
