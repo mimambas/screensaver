@@ -541,6 +541,59 @@ const tests = [
   },
 
   {
+    name: 'alarm: add form opens and accepts a new alarm',
+    fn: async (page) => {
+      // The AlarmList is on the classic layout. Make sure the
+      // toggle is on, then click the + button to open the form.
+      await page.evaluate(() => {
+        const raw = JSON.parse(localStorage.getItem('screensaver.settings.v2') || '{}');
+        raw.showAlarms = true;
+        raw.layout = 'classic';
+        localStorage.setItem('screensaver.settings.v2', JSON.stringify(raw));
+      });
+      await page.reload({ waitUntil: 'networkidle2' });
+      // The list starts empty.
+      const empty = await page.evaluate(() =>
+        Boolean(document.querySelector('[data-testid="alarm-list-empty"]')),
+      );
+      assert(empty, 'alarm list should show empty state on mount');
+      // Click the + button to open the add form.
+      await page.click('[data-testid="alarm-add-toggle"]');
+      // Wait for the form to mount.
+      await page.waitForSelector('[data-testid="alarm-form-submit"]', { timeout: 2000 });
+      // Set a time in the form. The <input type="time"> reads HH:MM.
+      await page.evaluate(() => {
+        const input = document.querySelector('input[type="time"]');
+        if (input) {
+          // Native input.value setter works for type=time.
+          const setter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype,
+            'value',
+          )?.set;
+          setter?.call(input, '07:30');
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+      // Submit the form.
+      await page.click('[data-testid="alarm-form-submit"]');
+      // Wait for the alarm to render.
+      await page.waitForFunction(
+        () => document.querySelectorAll('[data-testid="alarm-row"]').length === 1,
+        { timeout: 2000 },
+      );
+      const stored = await page.evaluate(() => {
+        try {
+          const raw = JSON.parse(localStorage.getItem('screensaver.alarms.v1') || '[]');
+          return raw.length;
+        } catch {
+          return 0;
+        }
+      });
+      assert(stored === 1, `expected 1 alarm in localStorage, got ${stored}`);
+    },
+  },
+
+  {
     name: 'alarm: notification test button is wired when add form opens',
     fn: async (page) => {
       // The AlarmList is on the classic layout. Make sure the
@@ -769,6 +822,12 @@ const tests = [
   {
     name: 'timer: Space toggles run, R resets, 1-9 select preset',
     fn: async (page) => {
+      // Ensure a clean localStorage state for this test (the
+      // helpers clear the per-app keys, but any leftover timer
+      // draft could trip up the preset click).
+      await page.evaluate(() => {
+        try { localStorage.removeItem('screensaver.timer.v1'); } catch {}
+      });
       await page.evaluate(() => {
         const raw = JSON.parse(localStorage.getItem('screensaver.settings.v2') || '{}');
         raw.showTimer = true;
@@ -776,6 +835,11 @@ const tests = [
         localStorage.setItem('screensaver.settings.v2', JSON.stringify(raw));
       });
       await page.reload({ waitUntil: 'networkidle2' });
+      // Wait for the timer widget to mount. Without this wait,
+      // page.keyboard.press('3') races the layout transition and
+      // sometimes fires before the global keydown listener is
+      // mounted in the Timer component.
+      await page.waitForSelector('[data-testid="timer-widget"]', { timeout: 3000 });
       // Pick 15-min preset via keyboard.
       await page.keyboard.press('3');
       await page.waitForFunction(

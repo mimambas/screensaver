@@ -260,6 +260,7 @@ export function AlarmList({
         <button
           type="button"
           onClick={() => setShowAdd((s) => !s)}
+          data-testid="alarm-add-toggle"
           className={`p-1 rounded-full ${
             theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-black/10'
           }`}
@@ -282,6 +283,7 @@ export function AlarmList({
 
       {alarms.length === 0 && !showAdd && (
         <div
+          data-testid="alarm-list-empty"
           className={`text-xs italic ${
             theme === 'dark' ? 'text-white/40' : theme === 'claude' ? 'text-[#3a2e1f]/40' : 'text-black/40'
           }`}
@@ -290,9 +292,10 @@ export function AlarmList({
         </div>
       )}
 
-      <div className="space-y-1">
+      <div className="space-y-1" data-testid="alarm-list">
         {alarms.map((a) => (
           <div
+            data-testid="alarm-row"
             key={a.id}
             className={`flex items-center gap-2 px-2 py-1.5 rounded-lg ${
               theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-black/5'
@@ -527,6 +530,7 @@ function AddAlarmForm({
       <button
         type="button"
         onClick={() => onAdd(time, label.trim(), days, { oneShot })}
+        data-testid="alarm-form-submit"
         className={`w-full px-2 py-1 rounded text-xs transition-colors ${
           theme === 'dark' ? 'bg-white/15 hover:bg-white/25' : 'bg-black/15 hover:bg-black/25'
         }`}

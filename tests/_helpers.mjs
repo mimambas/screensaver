@@ -88,7 +88,22 @@ export async function runTests(tests) {
     const t0 = Date.now();
     let page;
     try {
-      page = await newPage(browser);
+      // Race protection: newPage occasionally fails with
+      // "Session with given id not found" when the previous
+      // page's close is still propagating through the SW. We
+      // retry once on the first attempt.
+      let attempt = 0;
+      while (true) {
+        try {
+          page = await newPage(browser);
+          break;
+        } catch (e) {
+          attempt += 1;
+          if (attempt >= 3) throw e;
+          // Wait briefly for the previous target to close.
+          await new Promise((r) => setTimeout(r, 200));
+        }
+      }
       await t.fn(page);
       const ms = Date.now() - t0;
       results.push({ name: t.name, pass: true, ms });
