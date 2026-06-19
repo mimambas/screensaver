@@ -275,6 +275,8 @@ export const catalog: Catalog = {
   'alarm.dow.thu': { en: 'Thu', id: 'Kam' },
   'alarm.dow.fri': { en: 'Fri', id: 'Jum' },
   'alarm.dow.sat': { en: 'Sat', id: 'Sab' },
+  'alarm.labelEditHint': { en: 'Click to add a label…', id: 'Klik untuk tambah label…' },
+  'alarm.reorderHint': { en: 'Drag to reorder', id: 'Tarik untuk urutkan' },
   'alarm.test.permission': { en: 'Enable notifications for background alerts', id: 'Aktifkan notifikasi untuk alarm latar belakang' },
   'alarm.test.sentHint': { en: 'Send a test notification', id: 'Kirim notifikasi tes' },
   'alarm.test.title': { en: 'Alarm', id: 'Alarm' },

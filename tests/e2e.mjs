@@ -594,6 +594,118 @@ const tests = [
   },
 
   {
+    name: 'alarm: drag-to-reorder swaps positions + inline label edit',
+    fn: async (page) => {
+      // Seed 3 alarms via the form so we have something to drag.
+      await page.evaluate(() => {
+        const now = Date.now();
+        const alarms = [
+          { id: `a-${now}-1`, time: '06:00', label: 'Wake up', enabled: true, days: [], lastFired: 0, oneShot: false },
+          { id: `a-${now}-2`, time: '12:00', label: 'Lunch', enabled: true, days: [], lastFired: 0, oneShot: false },
+          { id: `a-${now}-3`, time: '19:00', label: 'Dinner', enabled: true, days: [], lastFired: 0, oneShot: false },
+        ];
+        localStorage.setItem('screensaver.alarms.v1', JSON.stringify(alarms));
+        const raw = JSON.parse(localStorage.getItem('screensaver.settings.v2') || '{}');
+        raw.showAlarms = true;
+        raw.layout = 'classic';
+        localStorage.setItem('screensaver.settings.v2', JSON.stringify(raw));
+      });
+      await page.reload({ waitUntil: 'networkidle2' });
+      // Wait for the alarm list to mount.
+      await page.waitForFunction(
+        () => document.querySelectorAll('[data-testid="alarm-row"]').length === 3,
+        { timeout: 3000 },
+      );
+      // Capture the initial order.
+      const before = await page.evaluate(() => {
+        return Array.from(document.querySelectorAll('[data-alarm-id]'))
+          .map((el) => el.getAttribute('data-alarm-id'));
+      });
+      assert(before.length === 3, `expected 3 rows, got ${before.length}`);
+      // The alarm list dispatches `alarm:reorder` on drop. We
+      // can simulate that by dispatching the event directly
+      // (HTML5 native drag-and-drop is hard to script via CDP).
+      // Swap alarm 1 with alarm 2 → expected order: [2, 1, 3].
+      const swapResult = await page.evaluate(() => {
+        const event = new CustomEvent('alarm:reorder', {
+          detail: { draggedId: window.__firstAlarmId, targetId: window.__secondAlarmId, before: true },
+        });
+        // We need the actual IDs. Query the DOM for them.
+        const rows = Array.from(document.querySelectorAll('[data-alarm-id]'));
+        const id1 = rows[0]?.getAttribute('data-alarm-id');
+        const id2 = rows[1]?.getAttribute('data-alarm-id');
+        if (!id1 || !id2) return null;
+        const ev = new CustomEvent('alarm:reorder', {
+          detail: { draggedId: id1, targetId: id2, before: false },
+        });
+        window.dispatchEvent(ev);
+        return { id1, id2 };
+      });
+      assert(swapResult, 'should find alarm IDs');
+      // Wait for the order to update.
+      await page.waitForFunction(
+        (id1, id2) => {
+          const rows = Array.from(document.querySelectorAll('[data-alarm-id]'));
+          return rows[0]?.getAttribute('data-alarm-id') === id2 &&
+                 rows[1]?.getAttribute('data-alarm-id') === id1;
+        },
+        { timeout: 2000 },
+        swapResult.id1,
+        swapResult.id2,
+      );
+      // Confirm localStorage persisted the new order.
+      const stored = await page.evaluate(() => {
+        try {
+          return JSON.parse(localStorage.getItem('screensaver.alarms.v1') || '[]')
+            .map((a) => a.label);
+        } catch {
+          return [];
+        }
+      });
+      assert(stored.length === 3, `expected 3 alarms in storage, got ${stored.length}`);
+      assert(stored[0] === 'Lunch' && stored[1] === 'Wake up', `unexpected order: ${JSON.stringify(stored)}`);
+      // Now test inline label edit. Click the label of the first
+      // alarm ("Lunch"), type a new label, press Enter.
+      const labelEditResult = await page.evaluate(() => {
+        const firstLabel = document.querySelector('[data-testid="alarm-label"]');
+        if (!firstLabel) return null;
+        firstLabel.click();
+        return { text: firstLabel.textContent };
+      });
+      assert(labelEditResult, 'first label should be clickable');
+      // The click should mount an input. Wait for it.
+      await page.waitForSelector('[data-testid="alarm-label-input"]', { timeout: 2000 });
+      // Type a new label.
+      await page.evaluate(() => {
+        const input = document.querySelector('[data-testid="alarm-label-input"]');
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        setter.call(input, 'Late lunch');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        // Commit via Enter.
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      });
+      // Wait for the label button to update.
+      await page.waitForFunction(
+        () => {
+          const firstLabel = document.querySelector('[data-testid="alarm-label"]');
+          return (firstLabel?.textContent ?? '').includes('Late lunch');
+        },
+        { timeout: 2000 },
+      );
+      // Confirm localStorage persisted the new label.
+      const newLabels = await page.evaluate(() => {
+        try {
+          return JSON.parse(localStorage.getItem('screensaver.alarms.v1') || '[]')
+            .map((a) => a.label);
+        } catch {
+          return [];
+        }
+      });
+      assert(newLabels[0] === 'Late lunch', `expected 'Late lunch', got '${newLabels[0]}'`);
+    },
+  },
+
+  {
     name: 'alarm: notification test button is wired when add form opens',
     fn: async (page) => {
       // The AlarmList is on the classic layout. Make sure the
@@ -978,6 +1090,11 @@ const tests = [
         localStorage.setItem('screensaver.pomodoro.stats.v1', JSON.stringify(stats));
       });
       await page.reload({ waitUntil: 'networkidle2' });
+      // Wait for the Pomodoro widget to mount (it's lazy now).
+      await page.waitForFunction(
+        () => Array.from(document.querySelectorAll('button')).some((b) => /stats/.test(b.textContent ?? '')),
+        { timeout: 5000 },
+      );
       // Open the panel.
       await page.evaluate(() => {
         const btn = Array.from(document.querySelectorAll('button')).find(
@@ -1706,6 +1823,11 @@ const tests = [
         localStorage.setItem('screensaver.pomodoro.stats.v1', JSON.stringify(stats));
       });
       await page.reload({ waitUntil: 'networkidle2' });
+      // Wait for the Pomodoro widget to mount (it's lazy).
+      await page.waitForFunction(
+        () => Array.from(document.querySelectorAll('button')).some((b) => /stats/.test(b.textContent ?? '')),
+        { timeout: 5000 },
+      );
       await page.evaluate(() => {
         const btn = Array.from(document.querySelectorAll('button')).find(
           (b) => /stats/.test(b.textContent ?? ''),

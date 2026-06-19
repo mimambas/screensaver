@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Bell, BellOff, Plus, Trash2, X } from 'lucide-react';
+import { Bell, BellOff, Plus, Trash2, X, GripVertical } from 'lucide-react';
 import { playChime, unlockAudio } from './audio';
 import type { ThemeName } from './clock-constants';
 import { useT } from '../i18n';
@@ -86,6 +86,36 @@ export function AlarmList({
   // component level (settings panel may surface a toggle) but
   // registering the hook keeps the SW alive.
   const [notificationStatus] = useNotificationPermission();
+
+  // ── Drag-to-reorder listener ─────────────────────────────────
+  // The AlarmRow component dispatches a custom event on drop
+  // (rather than threading a callback through props). We listen
+  // here and splice the moved alarm into the new position. The
+  // before/after flag is decided by cursor Y position relative
+  // to the target row's midpoint.
+  useEffect(() => {
+    const onReorder = (e: Event) => {
+      const detail = (e as CustomEvent<{ draggedId: string; targetId: string; before: boolean }>).detail;
+      setAlarms((prev) => {
+        const fromIdx = prev.findIndex((a) => a.id === detail.draggedId);
+        const toIdx = prev.findIndex((a) => a.id === detail.targetId);
+        if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return prev;
+        const next = [...prev];
+        const [moved] = next.splice(fromIdx, 1);
+        // Compute insertion index in the modified array. The
+        // `before` flag means insert at toIdx, otherwise at
+        // toIdx + 1 (one slot further).
+        const insertAt = detail.before ? toIdx : toIdx + 1;
+        // Clamp: when splicing fromIdx < toIdx, the index shifts
+        // down by 1.
+        const adjusted = fromIdx < toIdx ? Math.max(0, insertAt - 1) : Math.min(next.length, insertAt);
+        next.splice(adjusted, 0, moved);
+        return next;
+      });
+    };
+    window.addEventListener('alarm:reorder', onReorder);
+    return () => window.removeEventListener('alarm:reorder', onReorder);
+  }, []);
 
   // Listen for alarm-notification-click messages from the SW (sent
   // when the user taps a fired-alarm notification). We dismiss the
@@ -293,89 +323,274 @@ export function AlarmList({
       )}
 
       <div className="space-y-1" data-testid="alarm-list">
-        {alarms.map((a) => (
-          <div
-            data-testid="alarm-row"
+        {alarms.map((a, idx) => (
+          <AlarmRow
             key={a.id}
-            className={`flex items-center gap-2 px-2 py-1.5 rounded-lg ${
-              theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-black/5'
-            } ${firingId === a.id ? (theme === 'dark' ? 'bg-red-500/20 animate-pulse' : 'bg-red-500/20 animate-pulse') : ''}`}
-          >
-            <button
-              type="button"
-              onClick={() => toggle(a.id)}
-              className={`p-1 ${a.enabled ? '' : 'opacity-40'}`}
-              aria-label={a.enabled ? t('alarm.disable') : t('alarm.enable')}
-            >
-              {a.enabled ? <Bell className="w-3 h-3" /> : <BellOff className="w-3 h-3" />}
-            </button>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <input
-                  type="time"
-                  value={a.time}
-                  onChange={(e) => update(a.id, { time: e.target.value })}
-                  className={`bg-transparent tabular-nums outline-none w-20 ${
-                    theme === 'dark' ? 'text-white' : 'text-black'
-                  }`}
-                />
-                <div className="flex gap-0.5">
-                  {DAY_LABELS.map((d, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => {
-                        const days = a.days.includes(i)
-                          ? a.days.filter((x) => x !== i)
-                          : [...a.days, i].sort();
-                        update(a.id, { days });
-                      }}
-                      className={`w-4 h-4 text-[9px] rounded-full transition-colors ${
-                        a.days.length === 0 || a.days.includes(i)
-                          ? theme === 'dark' ? 'bg-white/30' : 'bg-black/30'
-                          : theme === 'dark' ? 'bg-white/5' : 'bg-black/5'
-                      }`}
-                      title={t(DAY_KEYS_SHORT[i])}
-                      aria-label={t('common.add') + ' ' + t(DAY_KEYS_SHORT[i])}
-                    >
-                      {d}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {a.label && (
-                <div
-                  className={`text-[10px] truncate ${
-                    theme === 'dark' ? 'text-white/50' : theme === 'claude' ? 'text-[#3a2e1f]/50' : 'text-black/50'
-                  }`}
-                >
-                  {a.label}
-                </div>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => remove(a.id)}
-              className={`p-1 opacity-40 hover:opacity-100 ${theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-black/10'} rounded`}
-              aria-label={t('alarm.delete')}
-            >
-              <Trash2 className="w-3 h-3" />
-            </button>
-            {firingId === a.id && (
-              <button
-                type="button"
-                onClick={() => snooze(a.id, 5)}
-                className={`p-1 text-[10px] rounded ${
-                  theme === 'dark' ? 'bg-white/15 hover:bg-white/25 text-white' : 'bg-black/15 hover:bg-black/25 text-black'
-                }`}
-                title={t('alarm.snooze')}
-              >
-                Zz 5
-              </button>
-            )}
-          </div>
+            alarm={a}
+            index={idx}
+            totalCount={alarms.length}
+            onToggle={() => toggle(a.id)}
+            onUpdate={(patch) => update(a.id, patch)}
+            onRemove={() => remove(a.id)}
+            onSnooze={() => snooze(a.id, 5)}
+            firingId={firingId}
+            theme={theme}
+          />
         ))}
       </div>
+    </div>
+  );
+}
+
+// ── AlarmRow — extracted for clarity. Renders one alarm with
+//    inline edit (time + label), drag handle, toggle bell,
+//    day picker, delete, snooze. The drag handle (GripVertical
+//    icon) lets the user reorder by drag-drop on the handle
+//    only — the rest of the row is for editing.
+//
+//    Inline label edit: clicking the label text turns it into
+//    an <input>. Enter / blur commits. Escape cancels.
+
+interface AlarmRowProps {
+  alarm: Alarm;
+  index: number;
+  totalCount: number;
+  onToggle: () => void;
+  onUpdate: (patch: Partial<Alarm>) => void;
+  onRemove: () => void;
+  onSnooze: () => void;
+  firingId: string | null;
+  theme: ThemeName;
+}
+
+function AlarmRow({
+  alarm: a,
+  index,
+  totalCount,
+  onToggle,
+  onUpdate,
+  onRemove,
+  onSnooze,
+  firingId,
+  theme,
+}: AlarmRowProps) {
+  const t = useT();
+  const [editingLabel, setEditingLabel] = useState(false);
+  const [labelDraft, setLabelDraft] = useState(a.label);
+  const [dragOver, setDragOver] = useState<'top' | 'bottom' | null>(null);
+  const labelInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Focus the label input when we enter edit mode. The user
+  // expects cursor-in-textbox immediately on click.
+  useEffect(() => {
+    if (editingLabel) {
+      labelInputRef.current?.focus();
+      labelInputRef.current?.select();
+    }
+  }, [editingLabel]);
+
+  const commitLabel = () => {
+    const next = labelDraft.trim();
+    if (next !== a.label) onUpdate({ label: next });
+    setEditingLabel(false);
+  };
+
+  // ── Drag-to-reorder ─────────────────────────────────────────
+  // We use HTML5 native drag-and-drop (no extra deps). The drag
+  // handle is data-drag-handle so other code paths (e.g. test
+  // automation) can target it. drop on a row → swap places.
+  const isDark = theme === 'dark';
+  const isClaude = theme === 'claude';
+
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData('text/x-alarm-id', a.id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    // We accept moves from other alarm rows. The dragover handler
+    // decides whether the indicator should show "drop above" or
+    // "drop below" based on cursor Y position relative to the
+    // row's midpoint.
+    if (!e.dataTransfer.types.includes('text/x-alarm-id')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mid = rect.top + rect.height / 2;
+    setDragOver(e.clientY < mid ? 'top' : 'bottom');
+  };
+
+  const handleDragLeave = () => setDragOver(null);
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const draggedId = e.dataTransfer.getData('text/x-alarm-id');
+    setDragOver(null);
+    if (!draggedId || draggedId === a.id) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mid = rect.top + rect.height / 2;
+    const before = e.clientY < mid;
+    // onReorder will be called by the parent through context.
+    // We dispatch a custom event the parent listens for so we
+    // don't have to thread callbacks through every row.
+    window.dispatchEvent(
+      new CustomEvent('alarm:reorder', {
+        detail: { draggedId, targetId: a.id, before },
+      }),
+    );
+  };
+
+  return (
+    <div
+      data-testid="alarm-row"
+      data-alarm-id={a.id}
+      data-alarm-index={index}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`relative flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors ${
+        isDark ? 'hover:bg-white/5' : 'hover:bg-black/5'
+      } ${
+        firingId === a.id ? (isDark ? 'bg-red-500/20 animate-pulse' : 'bg-red-500/20 animate-pulse') : ''
+      } ${
+        dragOver === 'top'
+          ? isDark
+            ? 'border-t-2 border-white/40'
+            : 'border-t-2 border-black/40'
+          : dragOver === 'bottom'
+          ? isDark
+            ? 'border-b-2 border-white/40'
+            : 'border-b-2 border-black/40'
+          : ''
+      }`}
+    >
+      {/* Drag handle — separate from the rest of the row so
+          the user has a clear grab target. Pointer events on
+          the rest of the row are NOT draggable; only this
+          handle is. */}
+      <button
+        type="button"
+        data-testid="alarm-drag-handle"
+        data-drag-handle="1"
+        draggable
+        onDragStart={handleDragStart}
+        className={`p-1 cursor-grab active:cursor-grabbing ${
+          isDark ? 'text-white/40 hover:text-white/70' : isClaude ? 'text-[#3a2e1f]/40 hover:text-[#3a2e1f]/70' : 'text-black/40 hover:text-black/70'
+        }`}
+        title={`${a.label || 'Alarm'} — drag to reorder (position ${index + 1} of ${totalCount})`}
+        aria-label={`Reorder alarm at position ${index + 1}`}
+      >
+        <GripVertical className="w-3 h-3" />
+      </button>
+      <button
+        type="button"
+        onClick={onToggle}
+        data-testid="alarm-toggle"
+        className={`p-1 ${a.enabled ? '' : 'opacity-40'}`}
+        aria-label={a.enabled ? t('alarm.disable') : t('alarm.enable')}
+      >
+        {a.enabled ? <Bell className="w-3 h-3" /> : <BellOff className="w-3 h-3" />}
+      </button>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <input
+            type="time"
+            value={a.time}
+            onChange={(e) => onUpdate({ time: e.target.value })}
+            data-testid="alarm-time"
+            className={`bg-transparent tabular-nums outline-none w-20 ${
+              isDark ? 'text-white' : isClaude ? 'text-[#3a2e1f]' : 'text-black'
+            }`}
+          />
+          <div className="flex gap-0.5">
+            {DAY_LABELS.map((d, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => {
+                  const days = a.days.includes(i)
+                    ? a.days.filter((x) => x !== i)
+                    : [...a.days, i].sort();
+                  onUpdate({ days });
+                }}
+                data-testid={`alarm-day-${i}`}
+                className={`w-4 h-4 text-[9px] rounded-full transition-colors ${
+                  a.days.length === 0 || a.days.includes(i)
+                    ? isDark ? 'bg-white/30' : isClaude ? 'bg-[#3a2e1f]/30' : 'bg-black/30'
+                    : isDark ? 'bg-white/5' : isClaude ? 'bg-[#3a2e1f]/5' : 'bg-black/5'
+                }`}
+                title={t(DAY_KEYS_SHORT[i])}
+                aria-label={t('common.add') + ' ' + t(DAY_KEYS_SHORT[i])}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+        </div>
+        {editingLabel ? (
+          <input
+            ref={labelInputRef}
+            type="text"
+            value={labelDraft}
+            onChange={(e) => setLabelDraft(e.target.value)}
+            onBlur={commitLabel}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                commitLabel();
+              } else if (e.key === 'Escape') {
+                setLabelDraft(a.label);
+                setEditingLabel(false);
+              }
+            }}
+            data-testid="alarm-label-input"
+            maxLength={40}
+            placeholder={t('alarm.label', { opt: t('common.optional') })}
+            className={`text-[10px] mt-1 w-full bg-transparent outline-none ${
+              isDark ? 'text-white' : isClaude ? 'text-[#3a2e1f]' : 'text-black'
+            }`}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setLabelDraft(a.label);
+              setEditingLabel(true);
+            }}
+            data-testid="alarm-label"
+            className={`block text-[10px] mt-1 truncate text-left w-full ${
+              a.label
+                ? isDark ? 'text-white/50' : isClaude ? 'text-[#3a2e1f]/50' : 'text-black/50'
+                : isDark ? 'text-white/30 italic' : isClaude ? 'text-[#3a2e1f]/30 italic' : 'text-black/30 italic'
+            }`}
+            title={t('alarm.labelEditHint')}
+          >
+            {a.label || t('alarm.labelEditHint')}
+          </button>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onRemove}
+        data-testid="alarm-delete"
+        className={`p-1 opacity-40 hover:opacity-100 ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/10'} rounded`}
+        aria-label={t('alarm.delete')}
+      >
+        <Trash2 className="w-3 h-3" />
+      </button>
+      {firingId === a.id && (
+        <button
+          type="button"
+          onClick={onSnooze}
+          data-testid="alarm-snooze"
+          className={`p-1 text-[10px] rounded ${
+            isDark ? 'bg-white/15 hover:bg-white/25 text-white' : 'bg-black/15 hover:bg-black/25 text-black'
+          }`}
+          title={t('alarm.snooze')}
+        >
+          Zz 5
+        </button>
+      )}
     </div>
   );
 }
